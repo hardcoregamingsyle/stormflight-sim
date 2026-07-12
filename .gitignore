@@ -1,0 +1,9 @@
+# Godot cache
+.godot/
+
+# Local build outputs (released via GitHub Releases, not the repo)
+builds/
+
+# OS noise
+Thumbs.db
+desktop.ini

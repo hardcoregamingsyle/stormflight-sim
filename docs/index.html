@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stormfighter Flight Sim — Fly the Meridian Isles</title>
+<meta name="description" content="A realistic flight simulator with 18 aircraft, 10 airports, live ATC, jobs, damage & failures, and player-hosted multiplayer. Play free in your browser or download for Windows.">
+<style>
+  :root {
+    --bg: #060a12; --bg2: #0b1220; --card: #101a2c; --accent: #ffb020;
+    --text: #e9edf4; --dim: #93a0b4; --good: #4ade80;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; }
+  .hero {
+    min-height: 92vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 48px 20px;
+    background: radial-gradient(ellipse at 50% -20%, #1b3a66 0%, #0b1220 55%, #060a12 100%);
+    position: relative; overflow: hidden;
+  }
+  .hero h1 { font-size: clamp(42px, 8vw, 84px); letter-spacing: 4px; color: var(--accent); text-shadow: 0 4px 40px rgba(255,176,32,.35); }
+  .hero .sub { font-size: clamp(14px, 2.4vw, 20px); letter-spacing: 10px; color: var(--dim); margin-bottom: 26px; }
+  .hero p.lead { max-width: 640px; color: var(--text); font-size: 18px; margin-bottom: 38px; }
+  .cta { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    display: inline-block; padding: 16px 34px; border-radius: 10px; font-size: 18px; font-weight: 700;
+    text-decoration: none; transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-play { background: var(--accent); color: #201503; box-shadow: 0 6px 30px rgba(255,176,32,.4); }
+  .btn-dl { background: #182540; color: var(--text); border: 1px solid #2c4067; }
+  .note { margin-top: 18px; color: var(--dim); font-size: 13px; }
+  section { max-width: 1080px; margin: 0 auto; padding: 70px 24px; }
+  h2 { color: var(--accent); font-size: 30px; margin-bottom: 26px; text-align: center; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .shots img { width: 100%; border-radius: 12px; border: 1px solid #223352; display: block; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid #1d2c47; border-radius: 12px; padding: 22px; }
+  .card h3 { color: var(--text); margin-bottom: 8px; font-size: 19px; }
+  .card p { color: var(--dim); font-size: 15px; }
+  .fleet { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip { background: #14203a; border: 1px solid #24406e; padding: 7px 14px; border-radius: 999px; font-size: 14px; color: var(--text); }
+  .chip.free { border-color: var(--good); color: var(--good); }
+  footer { text-align: center; padding: 40px 20px 60px; color: var(--dim); font-size: 14px; border-top: 1px solid #14203a; }
+  footer a { color: var(--accent); }
+  .kbd { background:#14203a; border:1px solid #2c4067; border-radius:5px; padding:1px 7px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>STORMFIGHTER</h1>
+  <div class="sub">F L I G H T &nbsp; S I M</div>
+  <p class="lead">Real-scale flying over the Meridian Isles: 18 faithfully-specced aircraft, 10 airports,
+  a living ATC, an economy that pays you to fly well — and bites when you don't.</p>
+  <div class="cta">
+    <a class="btn btn-play" href="./play/">&#9992; PLAY IN BROWSER</a>
+    <a class="btn btn-dl" href="https://github.com/hardcoregamingsyle/stormflight-sim/releases/latest/download/StormfighterFlightSim-Windows.zip">&#11015; DOWNLOAD FOR WINDOWS</a>
+  </div>
+  <div class="note">Desktop build: Windows 11, higher rendering quality, identical physics. ~55 MB zip, no install.</div>
+</div>
+
+<section>
+  <h2>From the flight deck</h2>
+  <div class="shots">
+    <img src="shots/air_f16.png" alt="F-16 with afterburner over the western mountains">
+    <img src="shots/air_a320.png" alt="A320 climbing out of Meridian International">
+    <img src="shots/gate_a320.png" alt="At the gate at Meridian International">
+    <img src="shots/heli_bell206.png" alt="Bell 206 at Cove Field">
+  </div>
+</section>
+
+<section>
+  <h2>What's in the box</h2>
+  <div class="grid">
+    <div class="card"><h3>&#127783; Real flight physics</h3><p>Component-buildup aerodynamics: each wing panel, tail surface and fin sees its own airflow. Stalls, sideslip, ground effect, transonic drag, crosswinds and gusts all emerge from the math — the same physics on web and desktop.</p></div>
+    <div class="card"><h3>&#128295; Damage, wear & failures</h3><p>Airframes wear with use and abuse. Over-G, overspeed, hard landings and afterburner abuse degrade systems — and the lower a system's health, the likelier an engine flameout, jammed flaps or stuck gear at the worst moment.</p></div>
+    <div class="card"><h3>&#128225; Automated ATC</h3><p>Clearance &rarr; taxi &rarr; hold short &rarr; takeoff &rarr; departure &rarr; enroute &rarr; approach &rarr; landing &rarr; taxi to a random gate. Into-wind runway assignment, taxi routing, go-arounds and emergency priority handling.</p></div>
+    <div class="card"><h3>&#11088; SkyCoins economy</h3><p>Judged every 15–30 seconds: clean flying, ATC compliance and butter landings pay; taxi speeding, runway incursions, gear-down cruising and crashes cost you. Fly jobs — cargo, charters, medical runs — to afford the heavy metal.</p></div>
+    <div class="card"><h3>&#127758; Real-scale world</h3><p>Ten airports 50–230 km apart, from a mega-hub to a desert strip, over procedural islands, mountains, deserts and snowfields with day/night and weather.</p></div>
+    <div class="card"><h3>&#129309; P2P multiplayer</h3><p>No servers, no accounts: one player hosts from the desktop app, friends join by IP. Shared world, real collisions, chat — fly formation or crop-dust your mate's approach.</p></div>
+    <div class="card"><h3>&#9881; Working parts everywhere</h3><p>Ailerons, elevators, rudders, Fowler flaps, slats, spoilers, retracting gear with bogies, spinning fans and rotors, afterburner glow, nav lights, beacons and strobes — all animated, all functional.</p></div>
+    <div class="card"><h3>&#128184; Earn your wings</h3><p>Start with the free Cessna 172 and 1,500 SkyCoins. Work your way up through airliners and fighters to the An-225 — every aircraft built to its real-world numbers.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>The fleet</h2>
+  <div class="fleet">
+    <span class="chip free">Cessna 172 — FREE</span>
+    <span class="chip">A320</span><span class="chip">A321</span><span class="chip">737 MAX 8</span>
+    <span class="chip">757</span><span class="chip">A340</span><span class="chip">A350</span>
+    <span class="chip">747</span><span class="chip">A380</span><span class="chip">An-124</span>
+    <span class="chip">An-225</span><span class="chip">F-16</span><span class="chip">A-10</span>
+    <span class="chip">F-35</span><span class="chip">F-22</span><span class="chip">Bell 206</span>
+    <span class="chip">UH-60</span><span class="chip">CH-47 Chinook</span>
+  </div>
+</section>
+
+<section>
+  <h2>Learn to fly in 60 seconds</h2>
+  <div class="card">
+    <p><span class="kbd">I</span> engines &nbsp; <span class="kbd">N</span> parking brake &nbsp; <span class="kbd">W/S</span> throttle &nbsp; <span class="kbd">arrows</span> pitch &amp; roll &nbsp; <span class="kbd">A/D</span> rudder &nbsp; <span class="kbd">G</span> gear &nbsp; <span class="kbd">F/V</span> flaps &nbsp; <span class="kbd">B</span> brakes &nbsp; <span class="kbd">Tab</span> ATC &nbsp; <span class="kbd">J</span> jobs &nbsp; <span class="kbd">M</span> map &nbsp; <span class="kbd">C</span> camera &nbsp; <span class="kbd">X</span> autopilot &nbsp; <span class="kbd">F1</span> help</p>
+    <p style="margin-top:12px">Request clearance on <span class="kbd">Tab</span>, taxi the yellow lines, hold short, and when the tower clears you — full power, rotate, gear up. The PAPI lights beside the runway will bring you home: two white, two red, you're on the glide.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Built with Godot 4.7 &nbsp;|&nbsp; <a href="https://github.com/hardcoregamingsyle/stormflight-sim">Source on GitHub</a> &nbsp;|&nbsp; Web &amp; Windows, same physics</p>
+  <p style="margin-top:6px">Multiplayer note: hosting needs the desktop app (TCP 9080). Browser clients can join http-served sessions.</p>
+</footer>
+
+</body>
+</html>
