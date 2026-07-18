@@ -32,6 +32,9 @@ jobs:
       - name: Import project
         run: godot --headless --import || true
 
+      - name: Validate scripts (fail the build on any compile error)
+        run: godot --headless --script tools/validate.gd
+
       - name: Export Windows (single self-contained exe)
         run: |
           mkdir -p builds/windows
@@ -48,6 +51,9 @@ jobs:
           git add docs/play
           git diff --cached --quiet || git commit -m "Update web build (${GAME_VERSION})"
           git push
+          # Keep the release tag on the newest good build
+          git tag -f "$GAME_VERSION"
+          git push --force origin "refs/tags/${GAME_VERSION}"
 
       - name: Publish release
         env:

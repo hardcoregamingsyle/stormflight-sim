@@ -453,11 +453,13 @@ static func build(airport_id: String) -> Dictionary:
 		tank.add_to_group("building")
 		tank.position = fpos + Vector3(0, 4.0, 0)
 		var tmesh := MeshInstance3D.new()
-		var tcyl := CylinderMesh.new()
-		tcyl.top_radius = 6.0
-		tcyl.bottom_radius = 6.0
-		tcyl.height = 8.0
-		tmesh.mesh = tcyl
+		# NB: named fuel_cyl, not tcyl - the tower's tcyl is still live in this
+		# scope and GDScript 2 treats shadowing an outer local as a parse error
+		var fuel_cyl := CylinderMesh.new()
+		fuel_cyl.top_radius = 6.0
+		fuel_cyl.bottom_radius = 6.0
+		fuel_cyl.height = 8.0
+		tmesh.mesh = fuel_cyl
 		tmesh.material_override = _bmat(Color(0.92, 0.93, 0.95), 0.35, 0.4)
 		tmesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		tank.add_child(tmesh)
