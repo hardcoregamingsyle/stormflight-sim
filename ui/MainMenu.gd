@@ -95,7 +95,7 @@ func show_home() -> void:
 		_fmt_time(SaveGame.stat("flight_time_s")), SaveGame.stat("landings"), SaveGame.stat("jobs_done"), int(SaveGame.stat("distance_km"))], 14, UIKit.DIM)
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(stats)
-	var ver := UIKit.label("v1.0.0 - Meridian Isles  |  %s build" % ("Web" if Quality.is_web else "Desktop"), 12, UIKit.DIM)
+	var ver := UIKit.label("v1.2.0 - Meridian Isles  |  %s build" % ("Web" if Quality.is_web else "Desktop"), 12, UIKit.DIM)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(ver)
 

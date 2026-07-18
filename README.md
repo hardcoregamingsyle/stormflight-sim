@@ -6,7 +6,7 @@ airmanship and punishes recklessness, damage & random failures, jobs, and player
 P2P multiplayer. Runs in the browser and as a native Windows app with identical physics.
 
 **[▶ Play in your browser](https://hardcoregamingsyle.github.io/stormflight-sim/play/)** ·
-**[⬇ Download for Windows](https://github.com/hardcoregamingsyle/stormflight-sim/releases/latest/download/StormfighterFlightSim-Windows.zip)** ·
+**[⬇ Download for Windows (.exe)](https://github.com/hardcoregamingsyle/stormflight-sim/releases/latest/download/StormfighterFlightSim.exe)** ·
 **[Landing page](https://hardcoregamingsyle.github.io/stormflight-sim/)**
 
 ![F-16 over the mountains](docs/shots/air_f16.png)

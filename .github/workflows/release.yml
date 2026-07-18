@@ -1,0 +1,75 @@
+name: release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release.yml']
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+env:
+  GODOT_VERSION: 4.7-stable
+  GAME_VERSION: v1.2.0
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          TPLDIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION/-/.}"
+          mkdir -p "$TPLDIR"
+          unzip -q templates.tpz
+          mv templates/* "$TPLDIR"/
+
+      - name: Import project
+        run: godot --headless --import || true
+
+      - name: Export Windows (single self-contained exe)
+        run: |
+          mkdir -p builds/windows
+          godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim.exe
+          ls -la builds/windows
+
+      - name: Export Web
+        run: godot --headless --export-release "Web" docs/play/index.html
+
+      - name: Commit updated web build
+        run: |
+          git config user.name "Nitish Goel"
+          git config user.email "hardcorgamingstyle@gmail.com"
+          git add docs/play
+          git diff --cached --quiet || git commit -m "Update web build (${GAME_VERSION})"
+          git push
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          The flight-model and world overhaul. Download **StormfighterFlightSim.exe** below — a single self-contained executable, no zip, no install — or [play in your browser](https://hardcoregamingsyle.github.io/stormflight-sim/play/).
+
+          ## Flight model
+          - **Reworked controls**: A/D roll (and steer the nosewheel on the ground), Q/E rudder, arrows pitch/roll. New turn-coordination assist (on by default, Settings toggle) blends rudder into your turns automatically.
+          - **Fixed sideslip cross-coupling** — rudder input no longer causes uncommanded roll/pitch; slips now roll the aircraft away like a real airframe.
+          - **Fuel, weight & balance**: wing + centre tanks with real mass at real positions. The centre of mass and inertia move as fuel burns; each engine feeds from its own wing, so an engine-out slowly builds a lateral imbalance you must trim against (HUD annunciator + per-tank readout).
+          - **Fuel slosh**: part-full tanks surge under uncoordinated flight and drag the CG around.
+          - **Water physics**: ditch fast and the sea is concrete; ditch slow and you float with buoyancy and hydro drag — briefly. Vertical gust turbulence added.
+          - **Flipping over on the ground is now an instant crash** (flip / cartwheel / wing strike), not slow damage.
+
+          ## Visuals
+          - Smoother lofted fuselages, canopy frames, polished intake lips, fan spinners, wheel hubs, clearcoat paint.
+          - Airport terminals with glass curtain walls, upgraded tower with beacon, gabled hangars, fuel farm, cargo containers, apron floodlights.
+          - Procedural city skyline with lit towers near every major airport, tree belts, environment glow and ground detail texturing on desktop.
+          EOF
+          gh release create "$GAME_VERSION" builds/windows/StormfighterFlightSim.exe \
+            --title "Stormfighter Flight Sim ${GAME_VERSION}" \
+            --notes-file notes.md \
+          || gh release upload "$GAME_VERSION" builds/windows/StormfighterFlightSim.exe --clobber
