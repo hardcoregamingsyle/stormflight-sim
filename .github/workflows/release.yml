@@ -32,8 +32,13 @@ jobs:
       - name: Import project
         run: godot --headless --import || true
 
-      - name: Validate scripts (fail the build on any compile error)
-        run: godot --headless --script tools/validate.gd
+      # tools/validate.gd can't run here (script mode has no autoload
+      # singletons, so every autoload reference reads as a false failure).
+      # The smoketest boots the real game headless - autoloads, every
+      # aircraft + airport build, and a scripted takeoff - and exits 1 on
+      # any script error or flight regression. Timeout guards a hung boot.
+      - name: Smoketest (headless boot + scripted flight)
+        run: timeout 420 godot --headless -- --smoketest
 
       - name: Export Windows (single self-contained exe)
         run: |
