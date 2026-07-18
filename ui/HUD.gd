@@ -80,6 +80,20 @@ func _ready() -> void:
 func _panel_at(preset: int) -> PanelContainer:
 	var p := UIKit.panel()
 	p.set_anchors_and_offsets_preset(preset, Control.PRESET_MODE_MINSIZE, 12)
+	# Panels must grow INTO the screen when content is added, not off it
+	match preset:
+		Control.PRESET_BOTTOM_LEFT:
+			p.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		Control.PRESET_BOTTOM_RIGHT:
+			p.grow_vertical = Control.GROW_DIRECTION_BEGIN
+			p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		Control.PRESET_CENTER_RIGHT:
+			p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+			p.grow_vertical = Control.GROW_DIRECTION_BOTH
+		Control.PRESET_CENTER_LEFT:
+			p.grow_vertical = Control.GROW_DIRECTION_BOTH
+		Control.PRESET_CENTER_TOP:
+			p.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(p)
 	return p
 
