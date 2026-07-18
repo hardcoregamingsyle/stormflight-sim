@@ -11,6 +11,7 @@ var afterburner: bool = false
 var throttle: float = 0.0          # commanded 0..1
 var rotor_rpm: float = 0.0         # helicopter rotor spool 0..1
 var ab_time: float = 0.0           # continuous afterburner seconds (heat)
+var last_burn: Array[float] = []   # kg burned per engine on the last update
 
 const JET_IDLE := 0.22
 const PROP_EFF := 0.80
@@ -21,6 +22,7 @@ func _init(config: AircraftConfig) -> void:
 		running.append(false)
 		n1.append(0.0)
 		health.append(1.0)
+		last_burn.append(0.0)
 
 func all_running() -> bool:
 	for r in running:
@@ -71,11 +73,13 @@ func update(dt: float, _rho: float, _mach: float) -> float:
 			target *= clampf(health[i] * 1.25, 0.0, 1.0)  # sick engines can't reach full power
 		var rate: float = cfg.spool_rate * (1.6 if target < n1[i] else 1.0)
 		n1[i] = move_toward(n1[i], target, rate * dt)
+		last_burn[i] = 0.0
 		if running[i]:
 			var burn_frac: float = 0.14 + 0.86 * n1[i]
 			if afterburner:
 				burn_frac *= 2.9
-			fuel_burned += cfg.fuel_burn_full / cfg.engine_count * burn_frac * dt
+			last_burn[i] = cfg.fuel_burn_full / cfg.engine_count * burn_frac * dt
+			fuel_burned += last_burn[i]
 
 	if cfg.is_helicopter():
 		var rpm_target := 1.0 if any_running() else 0.0

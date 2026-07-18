@@ -196,7 +196,7 @@ func _build_instruments() -> void:
 
 	# --- Annunciator chips ---
 	var ann_row := UIKit.hbox(6)
-	for spec in [["AP", UIKit.GOOD], ["PARK BRK", UIKit.BAD], ["SPLR", UIKit.WARN], ["A/B", Color(1.0, 0.5, 0.1)], ["PUSHBACK", Color(0.3, 0.85, 1.0)], ["TRIM", UIKit.DIM]]:
+	for spec in [["AP", UIKit.GOOD], ["PARK BRK", UIKit.BAD], ["SPLR", UIKit.WARN], ["A/B", Color(1.0, 0.5, 0.1)], ["PUSHBACK", Color(0.3, 0.85, 1.0)], ["TRIM", UIKit.DIM], ["FUEL IMBAL", UIKit.WARN]]:
 		var chip := _make_chip(spec[0], spec[1])
 		annunc_chips[spec[0]] = chip
 		ann_row.add_child(chip)
@@ -404,7 +404,7 @@ func _build_help() -> void:
 	help_panel.add_child(v)
 	v.add_child(UIKit.label("QUICK REFERENCE  (F1 to close)", 16, UIKit.ACCENT))
 	var txt := UIKit.label(
-		"W/S throttle · Arrows pitch/roll · A/D rudder · ,/. trim\n" +
+		"W/S throttle · A/D roll+steer · Arrows pitch/roll · Q/E rudder · ,/. trim\n" +
 		"G gear (hold=emergency) · F/V flaps · H spoilers · B brakes · N park brake\n" +
 		"I engines · U pushback · X autopilot · C camera · Right-drag look · Scroll zoom\n" +
 		"Tab ATC · 1-9 replies · J jobs · M map · Enter chat (MP) · Esc pause\n\n" +
@@ -803,7 +803,7 @@ func _process(dt: float) -> void:
 	bar_throttle.value = p.ctl_throttle
 	lbl_thrust.text = "%d%%%s" % [int(p.ctl_throttle * 100.0), "  AB" if p.propulsion.afterburner else ""]
 	bar_fuel.value = p.fuel_fraction()
-	lbl_fuel.text = "%d kg" % int(p.fuel_kg)
+	lbl_fuel.text = "%d kg  (%s)" % [int(p.fuel_kg), p.fuel_sys.readout()]
 	var fill := bar_fuel.get_theme_stylebox("fill") as StyleBoxFlat
 	fill.bg_color = UIKit.GOOD if p.fuel_fraction() > 0.2 else UIKit.BAD
 
@@ -846,6 +846,8 @@ func _process(dt: float) -> void:
 	(annunc_chips["A/B"] as Control).visible = p.propulsion.afterburner
 	(annunc_chips["PUSHBACK"] as Control).visible = p.pushback_active
 	(annunc_chips["TRIM"] as Control).visible = absf(p.ctl_trim) > 0.02
+	(annunc_chips["FUEL IMBAL"] as Control).visible = \
+		absf(p.fuel_sys.imbalance_kg()) > maxf(p.cfg.fuel_capacity * 0.06, 25.0)
 	lbl_annunc.text = ""
 
 	# --- Mode banner ---

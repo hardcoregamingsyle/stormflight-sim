@@ -10,6 +10,7 @@ var propulsion: Propulsion
 var gear: GearSystem
 var damage_sys: DamageSystem
 var autopilot: Autopilot
+var fuel_sys: FuelSystem
 
 var is_player: bool = false
 var is_remote: bool = false      # network proxy: no local physics
@@ -29,8 +30,16 @@ var spoiler_frac := 0.0
 var pushback_active := false
 
 # --- State ---
-var fuel_kg := 0.0
+## Total fuel. Reads/writes pass through the tank model so existing
+## refuel/save/HUD code keeps working unchanged.
+var fuel_kg: float:
+	get:
+		return fuel_sys.total() if fuel_sys != null else 0.0
+	set(v):
+		if fuel_sys != null:
+			fuel_sys.set_total(v)
 var payload_kg := 0.0
+var payload_pos := Vector3.ZERO  # body-frame cargo CG (slightly aft of origin)
 var crashed := false
 var engines_on := false
 var g_force := 1.0
@@ -54,6 +63,11 @@ var last_aero_force := Vector3.ZERO  # body frame, diagnostics
 var last_v_body := Vector3.ZERO
 var _blob: MeshInstance3D = null
 var _blob_mat: StandardMaterial3D = null
+var _accel_body := Vector3.ZERO      # proper acceleration, body frame (drives slosh)
+var _cg_limit := Vector3(1.0, 1.0, 1.0)
+var _immersion := 0.0                # 0..1 hull fraction in water
+var _water_t := 0.0                  # seconds spent swimming
+var _imbal_warn := false
 
 const FLAP_NOTCHES := [0.0, 0.25, 0.5, 0.75, 1.0]
 
@@ -66,9 +80,13 @@ func setup(config: AircraftConfig, player: bool, remote: bool = false) -> void:
 	gear = GearSystem.new(cfg)
 	damage_sys = DamageSystem.new(cfg)
 	autopilot = Autopilot.new()
+	fuel_sys = FuelSystem.new(cfg)
 	damage_sys.failed.connect(_on_system_failed)
 
 	fuel_kg = cfg.fuel_capacity * 0.75
+	payload_pos = Vector3(0, -0.15, float(cfg.mesh.get("fuselage_length_m", 10.0)) * 0.04)
+	_cg_limit = Vector3(maxf(cfg.wing_span * 0.06, 0.3), 0.8,
+		maxf(cfg.wing_area / maxf(cfg.wing_span, 0.1) * 0.45, 0.5))
 	mass = cfg.empty_mass + fuel_kg
 	# All aero/gear math assumes the CG is at the node origin - never let
 	# Godot infer the COM from collision shape placement.
@@ -124,18 +142,21 @@ func persist_condition() -> void:
 		"engine_health": propulsion.health.duplicate(),
 	})
 
+var _inertia_per_kg := Vector3.ONE   # radius-of-gyration² per axis
+
 func _set_inertia() -> void:
 	var L := float(cfg.mesh.get("fuselage_length_m", 10.0))
 	var b := cfg.wing_span
-	var m := (cfg.empty_mass + cfg.mtow) * 0.5
 	if cfg.is_helicopter():
 		var r := maxf(cfg.rotor_main_radius, 3.0)
-		inertia = Vector3(m * pow(0.30 * r, 2), m * pow(0.34 * r, 2), m * pow(0.26 * r, 2))
+		_inertia_per_kg = Vector3(pow(0.30 * r, 2), pow(0.34 * r, 2), pow(0.26 * r, 2))
 	else:
-		inertia = Vector3(
-			m * pow(0.22 * L, 2),                 # pitch (about +X)
-			m * pow(0.26 * (L + b) * 0.5, 2),     # yaw (about +Y)
-			m * pow(0.25 * b * 0.5, 2))           # roll (about +Z)
+		_inertia_per_kg = Vector3(
+			pow(0.22 * L, 2),                 # pitch (about +X)
+			pow(0.26 * (L + b) * 0.5, 2),     # yaw (about +Y)
+			pow(0.25 * b * 0.5, 2))           # roll (about +Z)
+	# Inertia tracks the live mass (fuel + payload) from here on
+	inertia = _inertia_per_kg * mass
 
 func _build_collision() -> void:
 	var L := float(cfg.mesh.get("fuselage_length_m", 10.0))
@@ -166,6 +187,14 @@ func _collect_player_input(dt: float) -> void:
 	var tgt_roll := Input.get_axis("roll_left", "roll_right")
 	var tgt_yaw := Input.get_axis("yaw_left", "yaw_right")
 
+	# Turn-coordination assist: automatically feeds rudder to null the
+	# sideslip, so banking with A/D gives a clean coordinated turn with no
+	# uncommanded pitch/roll ghosting. Pedal input (Q/E) always dominates.
+	if not cfg.is_helicopter() and not gear.on_ground \
+			and bool(SaveGame.setting("coord_assist", true)):
+		var assist := clampf(aero.beta * 2.2, -0.5, 0.5)
+		tgt_yaw = clampf(tgt_yaw + assist * (1.0 - absf(tgt_yaw)), -1.0, 1.0)
+
 	var atk := 3.2
 	var rel := 4.0
 	ctl_elevator = _smooth_axis(ctl_elevator, tgt_pitch, atk, rel, dt)
@@ -182,7 +211,9 @@ func _collect_player_input(dt: float) -> void:
 		ctl_trim = clampf(ctl_trim - 0.12 * dt, -0.5, 0.5)
 
 	gear.brake_input = 1.0 if Input.is_action_pressed("brakes") else 0.0
-	gear.steer_input = tgt_yaw
+	# On the ground A/D steers the nosewheel too - players taxi with the same
+	# keys they bank with; pedals (Q/E) still work for precise corrections.
+	gear.steer_input = clampf(Input.get_axis("yaw_left", "yaw_right") + tgt_roll, -1.0, 1.0)
 
 	if Input.is_action_just_pressed("gear_toggle"):
 		if gear.jammed or damage_sys.has_failed("gear"):
@@ -295,14 +326,24 @@ func _physics_process(dt: float) -> void:
 	slat_frac = move_toward(slat_frac, slat_target, dt / 5.0)
 	spoiler_frac = move_toward(spoiler_frac, 1.0 if spoiler_on else 0.0, dt / 1.2)
 
-	# Fuel + engines
-	var burned := propulsion.update(dt, rho, mach)
-	fuel_kg = maxf(fuel_kg - burned, 0.0)
-	if fuel_kg <= 0.0 and propulsion.any_running():
+	# Fuel + engines: per-engine burn drains the correct tanks (centre first,
+	# then each engine's own wing), and the free surface keeps sloshing
+	propulsion.update(dt, rho, mach)
+	fuel_sys.consume(propulsion.last_burn)
+	fuel_sys.update_slosh(dt, _accel_body)
+	if fuel_sys.total() <= 0.0 and propulsion.any_running():
 		propulsion.stop_all()
 		engines_on = false
 		EventBus.toast("FUEL EXHAUSTED - engines flamed out", "bad")
-	mass = cfg.empty_mass + fuel_kg + payload_kg
+
+	# Weight & balance: mass, centre of mass and inertia all track the live
+	# fuel + cargo state. Gravity acts at the shifted COM while aero acts at
+	# the airframe reference point, so a heavy tail or a lopsided fuel load
+	# genuinely changes trim - and sloshing fuel drags the CG around.
+	mass = cfg.empty_mass + fuel_sys.total() + payload_kg
+	var cg := (fuel_sys.moment() + payload_pos * payload_kg) / maxf(mass, 1.0)
+	center_of_mass = cg.clamp(-_cg_limit, _cg_limit)
+	inertia = _inertia_per_kg * mass
 
 	# --- Aerodynamics (body frame) ---
 	var basis_inv := global_transform.basis.inverse()
@@ -324,7 +365,10 @@ func _physics_process(dt: float) -> void:
 	})
 	last_aero_force = result.force
 	last_v_body = v_body
-	apply_central_force(global_transform.basis * result.force)
+	# Aero resultant acts at the airframe reference point (body origin), NOT
+	# the shifted centre of mass - that offset is exactly what makes CG
+	# position matter, so use the positioned apply_force, never central.
+	apply_force(global_transform.basis * result.force)
 	apply_torque(global_transform.basis * result.torque)
 
 	# --- Thrust (per engine, so failures give asymmetric yaw) ---
@@ -360,13 +404,53 @@ func _physics_process(dt: float) -> void:
 			var dv := want - linear_velocity
 			apply_central_force(dv * mass * 0.8)
 
+	# --- Water: buoyancy, hydro drag, ditching. The sea is a fluid, not a
+	# floor: touch it fast and it's concrete, touch it slow and you float,
+	# briefly, while it drags you to a stop and seeps in.
+	var terrain_y := global_position.y - agl
+	if terrain_y < -1.5:  # over the sea (surface at y = 0)
+		var hull_r := float(cfg.mesh.get("fuselage_radius_m", 1.0))
+		var draft := hull_r * 0.6 - global_position.y
+		var immersion := clampf(draft / (1.6 * hull_r), 0.0, 1.0)
+		if immersion > 0.0 and _immersion <= 0.0 and not crashed:
+			var h_speed := Vector2(linear_velocity.x, linear_velocity.z).length()
+			if h_speed > 30.0 or linear_velocity.y < -8.0:
+				crash("Hit the water at speed")
+			else:
+				EventBus.toast("DITCHED - floating... for now", "warn")
+		if immersion > 0.0 and not crashed:
+			apply_central_force(Vector3(0, mass * 9.81 * 1.18 * immersion, 0))
+			apply_central_force(-linear_velocity * mass * (0.4 + 1.8 * immersion))
+			apply_torque(-(angular_velocity * (_inertia_per_kg * mass)) * 2.0 * immersion)
+			if immersion > 0.4 and propulsion.any_running():
+				propulsion.stop_all()
+				engines_on = false
+				EventBus.toast("Engines flooded", "bad")
+			_water_t += dt
+			if _water_t > 8.0:
+				crash("Sank")
+		_immersion = immersion
+	else:
+		_immersion = 0.0
+		_water_t = 0.0
+
+	# --- Flip / cartwheel / wing strike: touching the ground while inverted
+	# or rolled past ~60 deg is never survivable. Crash instantly instead of
+	# grinding health away while the wreck slides around.
+	var up_dot := global_transform.basis.y.dot(Vector3.UP)
+	if not crashed:
+		if up_dot < 0.05 and (get_contact_count() > 0 or agl < 2.0):
+			crash("Flipped over")
+		elif up_dot < 0.5 and get_contact_count() > 0 and linear_velocity.length() > 8.0:
+			crash("Wing strike - cartwheeled")
+
 	# --- Damage / stress ---
 	var accel := (linear_velocity - prev_velocity) / dt
 	prev_velocity = linear_velocity
 	if accel.length() > 245.0:  # >25 g in one tick = teleport/respawn artifact
 		accel = Vector3.ZERO
-	var g_body_y := (basis_inv * (accel + Vector3(0, 9.81, 0))).y
-	g_force = g_body_y / 9.81
+	_accel_body = basis_inv * (accel + Vector3(0, 9.81, 0))
+	g_force = _accel_body.y / 9.81
 	damage_sys.update(dt, {
 		"g": g_force, "ias": get_ias(), "vne": cfg.vne,
 		"flap_frac": flap_frac, "gear_down": gear.is_down(),
@@ -374,8 +458,8 @@ func _physics_process(dt: float) -> void:
 	if damage_sys.health["structure"] <= 0.0 and not crashed:
 		crash("Structural failure")
 
-	# Belly scrape
-	if get_contact_count() > 0 and not gear.on_ground and agl < 4.0:
+	# Belly scrape (floating on water is handled by the ditching logic above)
+	if get_contact_count() > 0 and not gear.on_ground and agl < 4.0 and _immersion <= 0.0:
 		_belly_scrape_timer += dt
 		if linear_velocity.length() > 30.0 and _belly_scrape_timer > 0.4:
 			crash("Belly impact at speed")
@@ -399,6 +483,14 @@ func _update_warnings() -> void:
 		EventBus.overspeed_warning.emit(over_now)
 	if fuel_kg > 0.0 and fuel_kg < cfg.fuel_capacity * 0.1:
 		EventBus.fuel_low.emit(fuel_kg / cfg.fuel_capacity)
+	# Lateral fuel imbalance (engine-out feeding, asymmetric burn)
+	var imb := fuel_sys.imbalance_kg()
+	var imb_lim := maxf(cfg.fuel_capacity * 0.06, 25.0)
+	if absf(imb) > imb_lim and not _imbal_warn:
+		_imbal_warn = true
+		EventBus.toast("FUEL IMBALANCE - %s wing heavy" % ("right" if imb > 0 else "left"), "warn")
+	elif absf(imb) < imb_lim * 0.6:
+		_imbal_warn = false
 
 func _on_body_entered(other: Node) -> void:
 	if crashed or is_remote:
@@ -419,10 +511,17 @@ func _on_body_entered(other: Node) -> void:
 		if speed > 8.0:
 			crash("Collision with structure")
 		return
+	if other.is_in_group("water"):
+		# The physics tick owns flotation; only a hard splash is instant
+		if speed > 30.0 or absf(linear_velocity.y) > 8.0:
+			crash("Hit the water at speed")
+		return
 	# Terrain / pavement contact without wheels
 	if not gear.on_ground:
 		var vert := absf(linear_velocity.y)
-		if speed > 40.0 or vert > 12.0:
+		if global_transform.basis.y.dot(Vector3.UP) < 0.3:
+			crash("Flipped over")
+		elif speed > 40.0 or vert > 12.0:
 			crash("Ground impact")
 
 func crash(reason: String) -> void:

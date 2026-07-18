@@ -50,6 +50,21 @@ func _ready() -> void:
 	_grass_mat.vertex_color_use_as_albedo = true
 	_grass_mat.roughness = 0.95
 	_grass_mat.metallic = 0.0
+	if not Quality.is_web:
+		# Subtle triplanar noise breaks up the flat vertex-color ground
+		var gtex := NoiseTexture2D.new()
+		var gn := FastNoiseLite.new()
+		gn.frequency = 0.15
+		gn.fractal_octaves = 3
+		gtex.noise = gn
+		gtex.seamless = true
+		var grad := Gradient.new()
+		grad.set_color(0, Color(0.78, 0.78, 0.78))
+		grad.set_color(1, Color(1.0, 1.0, 1.0))
+		gtex.color_ramp = grad
+		_grass_mat.albedo_texture = gtex
+		_grass_mat.uv1_triplanar = true
+		_grass_mat.uv1_scale = Vector3(0.02, 0.02, 0.02)
 	# Water plane (follows camera in world; huge)
 	_water = MeshInstance3D.new()
 	var pm := PlaneMesh.new()

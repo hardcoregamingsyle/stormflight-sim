@@ -202,9 +202,12 @@ func _compute_fixed_wing(s: Dictionary) -> Dictionary:
 	torque.y += -damp_scale * b * b * 0.11 * w.y
 	torque.z += -damp_scale * b * b * 0.12 * w.z
 
-	# Dihedral effect: sideslip rolls the aircraft away from the slip
-	# (Cl_beta ~ -0.07, keeps the spiral mode tame like a real airframe)
-	torque.z += -beta * q_dyn * cfg.wing_area * b * 0.065
+	# Dihedral effect: sideslip rolls the aircraft AWAY from the slip.
+	# beta > 0 = airflow from the right; the upwind (right) wing gains lift,
+	# so the restoring moment lifts it: +Z torque (roll left) in this frame.
+	# The old sign here rolled INTO the slip, which cross-controlled the
+	# aircraft whenever the rudder was used and read as pitch/roll "ghosting".
+	torque.z += beta * q_dyn * cfg.wing_area * b * 0.055
 
 	return {"force": force, "torque": torque}
 

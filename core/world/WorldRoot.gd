@@ -49,7 +49,9 @@ func wind_at(global_pos: Vector3) -> Vector3:
 	var scale := 1.0 + clampf(alt / 4000.0, 0.0, 1.0) * 0.8
 	var gx := _gust_noise.get_noise_2d(_t * 30.0, 0.0)
 	var gz := _gust_noise.get_noise_2d(0.0, _t * 30.0 + 77.0)
-	return wind_base * scale + Vector3(gx, 0, gz) * gust_amp
+	# Vertical gusts (thermals/turbulence) - fade out near the ground
+	var gy := _gust_noise.get_noise_2d(_t * 24.0, 191.0) * clampf(alt / 250.0, 0.0, 1.0)
+	return wind_base * scale + Vector3(gx, gy * 0.6, gz) * gust_amp
 
 func _ready() -> void:
 	Game.world = self
@@ -148,6 +150,12 @@ func _setup_environment() -> void:
 	_env.fog_density = 1.0 / vis
 	_env.fog_light_color = Color(0.75, 0.79, 0.84)
 	_env.fog_sky_affect = 0.2
+	if not Quality.is_web:
+		# Soft glow lifts emissives (city windows, beacons, afterburners)
+		_env.glow_enabled = true
+		_env.glow_intensity = 0.45
+		_env.glow_bloom = 0.03
+		_env.glow_hdr_threshold = 1.15
 	var we := WorldEnvironment.new()
 	we.environment = _env
 	add_child(we)

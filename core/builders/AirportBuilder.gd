@@ -41,7 +41,25 @@ static func _slab(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float, col
 	body.add_child(cs)
 	parent.add_child(body)
 
-static func _building(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float, color: Color) -> StaticBody3D:
+static var _bmats: Dictionary = {}
+
+## Shared, cached building material (dozens of buildings reuse a handful).
+static func _bmat(color: Color, rough := 0.7, metal := 0.0, emis := 0.0) -> StandardMaterial3D:
+	var key := "%s_%.2f_%.2f_%.2f" % [color.to_html(), rough, metal, emis]
+	if _bmats.has(key):
+		return _bmats[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = rough
+	m.metallic = metal
+	if emis > 0.0:
+		m.emission_enabled = true
+		m.emission = color
+		m.emission_energy_multiplier = emis
+	_bmats[key] = m
+	return m
+
+static func _building(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float, color: Color, rough := 0.7, metal := 0.0) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.position = pos + Vector3(0, size.y * 0.5, 0)
 	body.rotation.y = rot_y
@@ -50,10 +68,7 @@ static func _building(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float,
 	var bm := BoxMesh.new()
 	bm.size = size
 	mi.mesh = bm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 0.7
-	mi.material_override = m
+	mi.material_override = _bmat(color, rough, metal)
 	# Building casters break directional shadow precision across the airport
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(mi)
@@ -64,6 +79,34 @@ static func _building(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float,
 	body.add_child(cs)
 	parent.add_child(body)
 	return body
+
+## Decorative mesh child of a building body (local coords, no collision).
+static func _deco(parent: Node, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.position = pos
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+## Terminal segment: concrete shell, blue glass curtain wall facing the
+## apron (local +Z), white roof fascia and rooftop plant.
+static func _terminal_segment(parent: Node3D, size: Vector3, pos: Vector3, rot_y: float) -> void:
+	var body := _building(parent, size, pos, rot_y, Color(0.85, 0.86, 0.88))
+	var glass := _bmat(Color(0.3, 0.42, 0.55), 0.1, 0.85)
+	_deco(body, Vector3(size.x * 0.94, size.y * 0.6, 0.5), Vector3(0, -size.y * 0.1, size.z * 0.5 + 0.1), glass)
+	# Landside glass strip too (thinner)
+	_deco(body, Vector3(size.x * 0.9, size.y * 0.35, 0.4), Vector3(0, -size.y * 0.05, -size.z * 0.5 - 0.05), glass)
+	var white := _bmat(Color(0.94, 0.95, 0.97), 0.5)
+	_deco(body, Vector3(size.x + 1.6, 1.3, size.z + 1.6), Vector3(0, size.y * 0.5 + 0.65, 0), white)
+	var plant := _bmat(Color(0.6, 0.62, 0.65), 0.8)
+	_deco(body, Vector3(4.0, 1.8, 3.0), Vector3(-size.x * 0.24, size.y * 0.5 + 2.2, size.z * 0.12), plant)
+	_deco(body, Vector3(3.0, 1.4, 2.6), Vector3(size.x * 0.28, size.y * 0.5 + 2.0, -size.z * 0.1), plant)
+	# Entrance canopy over the apron-side doors
+	_deco(body, Vector3(size.x * 0.5, 0.35, 5.0), Vector3(0, -size.y * 0.5 + 4.6, size.z * 0.5 + 2.6), white)
 
 ## Scatter many small boxes as a MultiMesh (markings, lights).
 static func _multimesh(parent: Node3D, box_size: Vector3, transforms: Array, color: Color, emissive: bool) -> void:
@@ -308,7 +351,7 @@ static func build(airport_id: String) -> Dictionary:
 	# Terminal - far enough back that even an An-225 nose-in fits. Long
 	# terminals are SEGMENTED: one giant box wrecks shadow-map precision.
 	if a.size == "small":
-		_building(root, Vector3(40.0, 6.0, 14.0), apron_c + main_perp * 105.0, -main_h + PI / 2.0, Color(0.82, 0.83, 0.86))
+		_terminal_segment(root, Vector3(40.0, 6.0, 14.0), apron_c + main_perp * 105.0, -main_h + PI / 2.0)
 	else:
 		var term_len := apron_len * 0.8
 		var n_seg := maxi(int(ceil(term_len / 150.0)), 1)
@@ -316,8 +359,8 @@ static func build(airport_id: String) -> Dictionary:
 		for seg in n_seg:
 			var along := (float(seg) - (n_seg - 1) * 0.5) * seg_len
 			var h_var := 14.0 + (3.0 if seg % 2 == 0 else 0.0)
-			_building(root, Vector3(seg_len - 8.0, h_var, 30.0),
-				apron_c + main_perp * 105.0 + main_dir * along, -main_h + PI / 2.0, Color(0.82, 0.83, 0.86))
+			_terminal_segment(root, Vector3(seg_len - 8.0, h_var, 30.0),
+				apron_c + main_perp * 105.0 + main_dir * along, -main_h + PI / 2.0)
 	# Tower
 	var tower_h := float(a.tower_height)
 	var tower_pos := apron_c + main_perp * 120.0 + main_dir * (apron_len * 0.5 + 30.0)
@@ -348,6 +391,36 @@ static func build(airport_id: String) -> Dictionary:
 	cabmat.roughness = 0.2
 	cab.material_override = cabmat
 	tower.add_child(cab)
+	# Cab roof, antenna mast + red obstruction beacon
+	var roof := MeshInstance3D.new()
+	var roofm := CylinderMesh.new()
+	roofm.top_radius = 5.0
+	roofm.bottom_radius = 5.5
+	roofm.height = 0.7
+	roof.mesh = roofm
+	roof.position.y = tower_h + 5.3
+	roof.material_override = _bmat(Color(0.9, 0.91, 0.93), 0.5)
+	roof.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	tower.add_child(roof)
+	var ant := MeshInstance3D.new()
+	var antm := CylinderMesh.new()
+	antm.top_radius = 0.06
+	antm.bottom_radius = 0.14
+	antm.height = 7.0
+	ant.mesh = antm
+	ant.position.y = tower_h + 5.6 + 3.5
+	ant.material_override = _bmat(Color(0.7, 0.71, 0.75), 0.4, 0.8)
+	ant.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	tower.add_child(ant)
+	var beacon := MeshInstance3D.new()
+	var beam := SphereMesh.new()
+	beam.radius = 0.45
+	beam.height = 0.9
+	beacon.mesh = beam
+	beacon.position.y = tower_h + 5.6 + 7.2
+	beacon.material_override = _bmat(Color(1.0, 0.12, 0.1), 0.4, 0.0, 3.0)
+	beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	tower.add_child(beacon)
 	var tcs := CollisionShape3D.new()
 	var tbs := CylinderShape3D.new()
 	tbs.radius = 4.5
@@ -357,11 +430,84 @@ static func build(airport_id: String) -> Dictionary:
 	tower.add_child(tcs)
 	root.add_child(tower)
 
-	# Hangars
+	# Hangars: steel shells with gabled roofs and big sliding doors
 	for hg in int(a.hangars):
-		_building(root, Vector3(30.0, 10.0, 24.0),
-			apron_c + main_dir * (-apron_len * 0.5 - 50.0 - hg * 40.0) + main_perp * 20.0,
-			-main_h, Color(0.55, 0.35, 0.3))
+		var hpos := apron_c + main_dir * (-apron_len * 0.5 - 50.0 - hg * 40.0) + main_perp * 20.0
+		var hangar := _building(root, Vector3(30.0, 8.0, 24.0), hpos, -main_h, Color(0.6, 0.62, 0.66))
+		var roof_mesh := MeshInstance3D.new()
+		var prism := PrismMesh.new()
+		prism.size = Vector3(30.5, 5.0, 24.5)
+		roof_mesh.mesh = prism
+		roof_mesh.position = Vector3(0, 6.5, 0)  # sits on the 8 m shell (local)
+		roof_mesh.material_override = _bmat(Color(0.45, 0.47, 0.52), 0.6, 0.3)
+		roof_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		hangar.add_child(roof_mesh)
+		# Sliding door on the apron-facing gable end (local -Z faces the apron)
+		_deco(hangar, Vector3(26.0, 6.6, 0.4), Vector3(0, -0.7, -12.2), _bmat(Color(0.35, 0.37, 0.42), 0.55, 0.4))
+		_deco(hangar, Vector3(26.0, 0.5, 0.5), Vector3(0, 2.9, -12.3), _bmat(Color(0.95, 0.55, 0.1), 0.5))
+
+	# Fuel farm: white storage tanks behind the hangar line
+	for ft in 3:
+		var fpos := apron_c + main_dir * (-apron_len * 0.5 - 60.0) + main_perp * (95.0 + ft * 17.0)
+		var tank := StaticBody3D.new()
+		tank.add_to_group("building")
+		tank.position = fpos + Vector3(0, 4.0, 0)
+		var tmesh := MeshInstance3D.new()
+		var tcyl := CylinderMesh.new()
+		tcyl.top_radius = 6.0
+		tcyl.bottom_radius = 6.0
+		tcyl.height = 8.0
+		tmesh.mesh = tcyl
+		tmesh.material_override = _bmat(Color(0.92, 0.93, 0.95), 0.35, 0.4)
+		tmesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		tank.add_child(tmesh)
+		_deco(tank, Vector3(1.2, 0.8, 13.0), Vector3(0, 4.2, 0), _bmat(Color(0.6, 0.62, 0.66), 0.5, 0.5))
+		var tank_cs := CollisionShape3D.new()
+		var tank_shape := CylinderShape3D.new()
+		tank_shape.radius = 6.0
+		tank_shape.height = 8.0
+		tank_cs.shape = tank_shape
+		tank.add_child(tank_cs)
+		root.add_child(tank)
+
+	# Cargo containers scattered along the hangar apron
+	var cont_cols := [Color(0.8, 0.35, 0.1), Color(0.15, 0.35, 0.6), Color(0.2, 0.5, 0.25), Color(0.6, 0.15, 0.15)]
+	for ci in 8:
+		var cpos := apron_c + main_dir * (-apron_len * 0.5 - 20.0 - float(ci % 4) * 8.0) \
+			+ main_perp * (52.0 + float(floori(ci / 4.0)) * 5.0)
+		_building(root, Vector3(6.0, 2.6, 2.4), cpos, -main_h + (0.3 if ci % 3 == 0 else 0.0), cont_cols[ci % cont_cols.size()], 0.6, 0.3)
+
+	# Apron floodlight masts along the terminal edge
+	var flood_head := _bmat(Color(1.0, 0.97, 0.88), 0.4, 0.0, 2.2)
+	var pole_mat := _bmat(Color(0.5, 0.52, 0.56), 0.5, 0.6)
+	for fl in 5:
+		var fl_along := (float(fl) - 2.0) * (apron_len * 0.22)
+		var fl_pos := apron_c + main_perp * 88.0 + main_dir * fl_along
+		var mast := Node3D.new()
+		mast.position = fl_pos
+		root.add_child(mast)
+		var pole := MeshInstance3D.new()
+		var pole_m := CylinderMesh.new()
+		pole_m.top_radius = 0.16
+		pole_m.bottom_radius = 0.25
+		pole_m.height = 14.0
+		pole.mesh = pole_m
+		pole.position.y = 7.0
+		pole.material_override = pole_mat
+		pole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mast.add_child(pole)
+		var head := MeshInstance3D.new()
+		var head_m := BoxMesh.new()
+		head_m.size = Vector3(2.4, 0.5, 0.8)
+		head.mesh = head_m
+		head.position = Vector3(0, 14.0, 0)
+		head.material_override = flood_head
+		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mast.add_child(head)
+
+	# City skyline + tree belt round out the view from the pattern
+	_build_city(root, a, main_h, main_dir, main_perp)
+	_scatter_trees(root, a, main_dir, main_perp)
 
 	# Windsock (orange cone on pole near runway 1 threshold)
 	var sock_root := Node3D.new()
@@ -392,6 +538,109 @@ static func build(airport_id: String) -> Dictionary:
 	data.windsock = sock
 
 	return data
+
+# =====================================================================
+## Procedural downtown on the terminal side of the field: low-rise blocks
+## with a handful of glass towers, obstruction lights on the tall ones.
+## Deterministic per airport. Skipped at small fields.
+static func _build_city(root: Node3D, a: Dictionary, main_h: float, main_dir: Vector3, main_perp: Vector3) -> void:
+	if a.size == "small":
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(String(a.icao)) + 17
+	var palette := [Color(0.74, 0.72, 0.69), Color(0.62, 0.63, 0.66), Color(0.57, 0.51, 0.47),
+		Color(0.68, 0.7, 0.73), Color(0.5, 0.54, 0.6)]
+	var n_rows := 5 if a.size == "mega" else 4
+	var n_cols := 9 if a.size == "mega" else 7
+	var glass_col := Color(0.34, 0.44, 0.55)
+	var window_mat := _bmat(Color(0.95, 0.9, 0.7), 0.4, 0.0, 0.7)
+	for gz in n_rows:
+		for gx in n_cols:
+			if rng.randf() < 0.16:
+				continue
+			var along := (float(gx) - (n_cols - 1) * 0.5) * 150.0 + rng.randf_range(-22.0, 22.0)
+			var out := 1150.0 + gz * 150.0 + rng.randf_range(-22.0, 22.0)
+			var pos := main_perp * out + main_dir * along
+			# Mostly low-rise, with a downtown core near the middle rows
+			var core := 1.0 - clampf(absf(along) / (n_cols * 80.0) + float(gz) / (n_rows * 2.0), 0.0, 1.0)
+			var hgt := rng.randf_range(9.0, 24.0) + pow(rng.randf(), 3.0) * 130.0 * (0.3 + core)
+			var w := rng.randf_range(16.0, 34.0)
+			var d := rng.randf_range(16.0, 34.0)
+			var is_tower := hgt > 60.0
+			if is_tower:
+				w = clampf(w, 16.0, 26.0)
+				d = clampf(d, 16.0, 26.0)
+			var col: Color = glass_col if is_tower else palette[rng.randi() % palette.size()]
+			var b := _building(root, Vector3(w, hgt, d), pos, -main_h + rng.randf_range(-0.06, 0.06),
+				col, 0.12 if is_tower else 0.75, 0.85 if is_tower else 0.0)
+			if is_tower:
+				# Roof plant + lit window bands + red obstruction light
+				_deco(b, Vector3(w * 0.5, 2.0, d * 0.5), Vector3(0, hgt * 0.5 + 1.0, 0), _bmat(Color(0.8, 0.81, 0.84), 0.6))
+				for side in [-1.0, 1.0]:
+					_deco(b, Vector3(w * 0.7, hgt * 0.8, 0.3), Vector3(0, 0, side * (d * 0.5 + 0.05)), window_mat)
+				if hgt > 90.0:
+					_deco(b, Vector3(0.8, 0.8, 0.8), Vector3(0, hgt * 0.5 + 2.4, 0), _bmat(Color(1.0, 0.12, 0.1), 0.4, 0.0, 3.0))
+
+## Conifer belt around the field - everywhere except the terminal/city side
+## and the runway strips. One MultiMesh, per-instance color variation.
+static func _scatter_trees(root: Node3D, a: Dictionary, _main_dir: Vector3, main_perp: Vector3) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(String(a.icao)) + 31
+	var max_len := 0.0
+	for rw in a.runways:
+		max_len = maxf(max_len, float(rw.length))
+	var safe_r := max_len * 0.75 + 400.0
+	var count := 60 if Quality.is_web else 170
+	var xforms: Array[Transform3D] = []
+	var colors: Array[Color] = []
+	var attempts := 0
+	while xforms.size() < count and attempts < count * 12:
+		attempts += 1
+		var ang := rng.randf() * TAU
+		var r := sqrt(rng.randf()) * safe_r
+		var p := Vector3(cos(ang) * r, 0, sin(ang) * r)
+		if p.dot(main_perp) > 40.0:
+			continue  # terminal / apron / city side stays clear
+		var too_close := false
+		for rw in a.runways:
+			var h := deg_to_rad(float(rw.heading))
+			var dir := Vector3(sin(h), 0, -cos(h))
+			var perp := Vector3(-cos(h), 0, -sin(h))
+			var center := Vector3(float(rw.offset[0]), 0, float(rw.offset[1]))
+			var rel := p - center
+			if absf(rel.dot(dir)) < float(rw.length) * 0.55 + 250.0 \
+					and absf(rel.dot(perp)) < float(rw.width) + 160.0:
+				too_close = true
+				break
+		if too_close:
+			continue
+		var s := rng.randf_range(0.7, 1.6)
+		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.9, 1.3), s))
+		xforms.append(Transform3D(basis, p + Vector3(0, 2.4 * s, 0)))
+		colors.append(Color(0.12, 0.3, 0.13).lerp(Color(0.25, 0.42, 0.16), rng.randf()))
+	if xforms.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 2.0
+	cone.height = 6.0
+	cone.radial_segments = 7
+	var tree_mat := StandardMaterial3D.new()
+	tree_mat.vertex_color_use_as_albedo = true
+	tree_mat.roughness = 0.95
+	cone.material = tree_mat
+	mm.mesh = cone
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+		mm.set_instance_color(i, colors[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mmi)
 
 # =====================================================================
 ## BFS shortest path through the taxi graph. Returns Array of absolute Vector3.

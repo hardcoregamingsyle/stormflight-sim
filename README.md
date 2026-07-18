@@ -17,6 +17,12 @@ P2P multiplayer. Runs in the browser and as a native Windows app with identical 
   local airflow, so stalls, sideslip, roll/pitch/yaw damping, ground effect, transonic drag rise
   and crosswind behaviour all emerge from the aerodynamics rather than scripted rates.
   Raycast landing gear with per-wheel suspension, tire grip, brakes and nosewheel steering.
+- **Fuel, weight & fluid physics** — multi-tank fuel (wing cells + centre tank) with real mass
+  at real positions: the centre of mass and inertia move as fuel burns, engines feed from their
+  own wing (an engine-out slowly builds a lateral imbalance you must trim against), and fuel
+  visibly sloshes in partially-filled tanks during uncoordinated flight. Ditching physics with
+  buoyancy and hydrodynamic drag: hit the sea fast and it's concrete, slow and you float —
+  briefly. Flipping onto your back on the ground is an instant crash, as it should be.
 - **18 aircraft** with researched real-world numbers (mass, thrust, wing geometry, speeds):
   Cessna 172 (free starter), A320, A321, 737 MAX 8, 757, A340, A350, 747, A380, An-124, An-225,
   F-16, A-10, F-35, F-22, Bell 206, UH-60, CH-47 Chinook. Procedurally modelled with animated
@@ -47,8 +53,9 @@ P2P multiplayer. Runs in the browser and as a native Windows app with identical 
 | Key | Action | Key | Action |
 |---|---|---|---|
 | W / S | Throttle (heli: collective) | G | Gear (hold = emergency drop) |
-| Arrows | Pitch & roll (heli: cyclic) | F / V | Flaps down / up |
-| A / D | Rudder / steering (heli: pedals) | H | Spoilers / speedbrake |
+| A / D | Roll + nosewheel steering (heli: cyclic roll) | F / V | Flaps down / up |
+| Arrows | Pitch (Up/Down) & roll (Left/Right) | H | Spoilers / speedbrake |
+| Q / E | Rudder pedals (heli: tail rotor) | | |
 | , / . | Pitch trim | B / N | Brakes / parking brake |
 | I | Engines | U | Pushback tug |
 | X | Autopilot | C | Camera views |

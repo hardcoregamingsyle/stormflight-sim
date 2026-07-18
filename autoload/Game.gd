@@ -36,14 +36,15 @@ func _register_inputs() -> void:
 	# Throttle / collective
 	_add("throttle_up", [_key(KEY_W)])
 	_add("throttle_down", [_key(KEY_S)])
-	# Rudder / pedals
-	_add("yaw_left", [_key(KEY_A)])
-	_add("yaw_right", [_key(KEY_D)])
-	# Pitch / roll (elevator pull = arrow down, standard yoke sense)
+	# Roll on A/D (and arrows) - the axis players reach for first
+	_add("roll_left", [_key(KEY_A), _key(KEY_LEFT)])
+	_add("roll_right", [_key(KEY_D), _key(KEY_RIGHT)])
+	# Rudder / pedals on Q/E
+	_add("yaw_left", [_key(KEY_Q)])
+	_add("yaw_right", [_key(KEY_E)])
+	# Pitch (elevator pull = arrow down, standard yoke sense)
 	_add("pitch_up", [_key(KEY_DOWN)])
 	_add("pitch_down", [_key(KEY_UP)])
-	_add("roll_left", [_key(KEY_LEFT)])
-	_add("roll_right", [_key(KEY_RIGHT)])
 	# Trim
 	_add("trim_up", [_key(KEY_PERIOD)])
 	_add("trim_down", [_key(KEY_COMMA)])

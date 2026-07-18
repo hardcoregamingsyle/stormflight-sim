@@ -9,7 +9,7 @@ class_name AircraftMeshBuilder
 ##
 ## Axes: +X right, +Y up, +Z back (nose = -Z). Origin = CG (wing 1/4 chord).
 
-static var SEGS: int = 10 if OS.has_feature("web") else 20
+static var SEGS: int = 12 if OS.has_feature("web") else 28
 static var _mats: Dictionary = {}
 
 # ============================================================ material helpers
@@ -26,6 +26,11 @@ static func _mat(color: Color, rough := 0.55, metal := 0.15, emissive := false) 
 		m.emission_enabled = true
 		m.emission = color
 		m.emission_energy_multiplier = 2.0
+	elif rough < 0.5 and not OS.has_feature("web"):
+		# Waxed-paint clearcoat on glossy airframe surfaces (desktop only)
+		m.clearcoat_enabled = true
+		m.clearcoat = 0.5
+		m.clearcoat_roughness = 0.25
 	_mats[key] = m
 	return m
 
@@ -33,10 +38,14 @@ static func _glass() -> StandardMaterial3D:
 	if _mats.has("glass"):
 		return _mats["glass"]
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.08, 0.1, 0.14)
-	m.roughness = 0.12
-	m.metallic = 0.65
+	m.albedo_color = Color(0.07, 0.1, 0.15)
+	m.roughness = 0.08
+	m.metallic = 0.75
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if not OS.has_feature("web"):
+		m.rim_enabled = true
+		m.rim = 0.4
+		m.rim_tint = 0.6
 	_mats["glass"] = m
 	return m
 
@@ -143,18 +152,34 @@ static func build(cfg: AircraftConfig) -> Dictionary:
 		return {"root": root, "parts": parts}
 
 	# ---------------- fuselage ----------------
+	# Smooth-lofted body: ogive nose curve + long constant section + gently
+	# tapering tail cone, instead of the old sharp 6-point silhouette.
 	var nf := float(mp.get("nose_length_frac", 0.15))
 	var tf := float(mp.get("tail_length_frac", 0.25))
+	var is_fighter := cfg.role in ["fighter", "attack"]
 	var prof: Array = []
-	prof.append(Vector2(nose_z, R * 0.04))
-	prof.append(Vector2(nose_z + nf * L * 0.3, R * 0.55))
+	prof.append(Vector2(nose_z, R * 0.03))
+	var nose_pow := 0.85 if is_fighter else 0.6   # fighters get a sharper nose
+	for i in range(1, 7):
+		var t := float(i) / 7.0
+		prof.append(Vector2(nose_z + nf * L * t, R * pow(sin(t * PI * 0.5), nose_pow)))
 	prof.append(Vector2(nose_z + nf * L, R))
 	prof.append(Vector2(tail_z - tf * L, R))
-	prof.append(Vector2(tail_z - tf * L * 0.4, R * 0.6))
-	prof.append(Vector2(tail_z, R * 0.12))
-	var is_fighter := cfg.role in ["fighter", "attack"]
-	var fus := _mesh_node(_lathe(prof, 0.92 if is_fighter else 1.0), _mat(primary, 0.42, 0.25), root, Vector3.ZERO, "fuselage")
+	for i in range(1, 6):
+		var t2 := float(i) / 6.0
+		prof.append(Vector2(tail_z - tf * L * (1.0 - t2), R * (1.0 - 0.9 * pow(t2, 1.5))))
+	prof.append(Vector2(tail_z, R * 0.08))
+	var fus := _mesh_node(_lathe(prof, 0.92 if is_fighter else 1.0), _mat(primary, 0.38, 0.3), root, Vector3.ZERO, "fuselage")
 	fus.position.y = 0.0
+	# Fighters carry a nose pitot probe
+	if is_fighter:
+		var probe := CylinderMesh.new()
+		probe.top_radius = 0.015
+		probe.bottom_radius = 0.05
+		probe.height = R * 1.6
+		var pmi := _mesh_node(probe, _mat(Color(0.3, 0.31, 0.34), 0.4, 0.8), root,
+			Vector3(0, 0, nose_z - R * 0.7), "pitot")
+		pmi.rotation.x = PI / 2.0
 
 	# Accent stripe + windows for airliners
 	if cfg.role in ["airliner", "cargo"]:
@@ -171,16 +196,29 @@ static func build(cfg: AircraftConfig) -> Dictionary:
 		var can := SphereMesh.new()
 		can.radius = R * 0.75
 		can.height = R * 1.5
-		var cmi := _mesh_node(can, _glass(), root, Vector3(0, R * 0.65, nose_z + nf * L * 1.35), "canopy")
+		var can_pos := Vector3(0, R * 0.65, nose_z + nf * L * 1.35)
+		var cmi := _mesh_node(can, _glass(), root, can_pos, "canopy")
 		cmi.scale = Vector3(0.75, 0.8, 2.6)
+		# Canopy bow frame
+		var bow := _mesh_node(_box(Vector3(R * 1.16, R * 0.75, 0.07)), _mat(primary.darkened(0.3), 0.4, 0.4), root,
+			can_pos + Vector3(0, R * 0.1, R * 0.5), "canopy_bow")
+		bow.scale = Vector3(1.0, 0.9, 1.0)
 	elif ck == "airliner":
 		for side in [-1.0, 1.0]:
 			var wsh := _mesh_node(_box(Vector3(R * 0.55, R * 0.28, R * 0.9)), _glass(), root,
 				Vector3(side * R * 0.55, R * 0.42, nose_z + nf * L * 0.85), "windshield")
 			wsh.rotation.y = side * 0.5
+		# Dark anti-glare panel on the nose top
+		var ag := _mesh_node(_box(Vector3(R * 0.9, 0.04, R * 1.3)), _mat(Color(0.13, 0.14, 0.16), 0.7, 0.1), root,
+			Vector3(0, R * 0.62, nose_z + nf * L * 0.5), "antiglare")
+		ag.rotation.x = -0.18
 	else: # ga
 		_mesh_node(_box(Vector3(R * 1.7, R * 0.7, R * 1.6)), _glass(), root,
 			Vector3(0, R * 0.75, nose_z + L * 0.3), "cabin_glass")
+		# Windshield frame pillars
+		for side in [-1.0, 1.0]:
+			_mesh_node(_box(Vector3(0.06, R * 0.75, 0.08)), _mat(primary.darkened(0.15), 0.5, 0.2), root,
+				Vector3(side * R * 0.82, R * 0.75, nose_z + L * 0.3 - R * 0.75), "pillar")
 
 	# ---------------- wings + control surfaces ----------------
 	var root_c := float(mp.get("wing_root_chord_m", 2.0))
@@ -382,17 +420,18 @@ static func _build_engines(cfg: AircraftConfig, root: Node3D, parts: Dictionary,
 				var glow := _mesh_node(_lathe([Vector2(0, R * 0.28), Vector2(2.2, R * 0.1)]), glow_m, noz, Vector3(0, 0, R * 0.9), "ab_glow")
 				glow.visible = false
 				parts.ab_glows.append(glow)
-		"nose": # piston prop
+		"nose": # piston / turboprop nose engine
 			var cowl := _mesh_node(_lathe([Vector2(-0.4, R * 0.35), Vector2(0.0, R * 0.85), Vector2(1.2, R * 0.95)]), nac_mat, root, Vector3(0, 0, nose_z + 0.3), "cowl")
 			var prop_root := Node3D.new()
 			prop_root.position = Vector3(0, 0, -0.45)
 			cowl.add_child(prop_root)
 			var spinner := _lathe([Vector2(-0.35, 0.02), Vector2(0.0, 0.16), Vector2(0.15, 0.18)])
-			_mesh_node(spinner, dark, prop_root, Vector3.ZERO, "spinner")
-			for b in 2:
-				var blade := _mesh_node(_box(Vector3(0.13, 1.9, 0.05)), dark, prop_root, Vector3.ZERO, "blade")
-				blade.rotation.z = PI * b
-				blade.position.y = 0.0
+			_mesh_node(spinner, _mat(Color(0.75, 0.76, 0.8), 0.25, 0.9), prop_root, Vector3.ZERO, "spinner")
+			var n_blades := 3 if cfg.max_power > 220000.0 else 2
+			for b in n_blades:
+				var blade := _mesh_node(_box(Vector3(0.15, 1.9, 0.04)), dark, prop_root, Vector3.ZERO, "blade")
+				blade.rotation.z = TAU * b / n_blades
+				blade.rotation.y = 0.35  # blade pitch twist
 			parts.prop_roots.append(prop_root)
 		_:
 			pass
@@ -402,22 +441,29 @@ static func _add_nacelle(root: Node3D, parts: Dictionary, pos: Vector3, nac_r: f
 	var nac := _mesh_node(_lathe(prof), nac_mat, root, pos, "nacelle")
 	# Pylon
 	_mesh_node(_box(Vector3(0.25, nac_r * 1.2, nac_l * 0.5)), nac_mat, nac, Vector3(0, nac_r * 0.9, nac_l * 0.45), "pylon")
-	# Intake lip ring accent
-	_mesh_node(_lathe([Vector2(-0.02, nac_r * 0.99), Vector2(0.12, nac_r * 1.0)]), _mat(accent, 0.4, 0.5), nac, Vector3.ZERO, "lip")
-	# Spinning fan disc
+	# Polished intake lip ring
+	_mesh_node(_lathe([Vector2(-0.02, nac_r * 0.99), Vector2(0.12, nac_r * 1.0)]), _mat(Color(0.82, 0.84, 0.88), 0.15, 0.95), nac, Vector3.ZERO, "lip")
+	# Thin accent ring behind the lip
+	_mesh_node(_lathe([Vector2(0.14, nac_r * 1.0), Vector2(0.3, nac_r * 0.995)]), _mat(accent, 0.4, 0.5), nac, Vector3.ZERO, "accent_ring")
+	# Spinning fan disc, recessed in the intake
 	var fan := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
-	cyl.top_radius = nac_r * 0.68
-	cyl.bottom_radius = nac_r * 0.68
-	cyl.height = 0.1
+	cyl.top_radius = nac_r * 0.7
+	cyl.bottom_radius = nac_r * 0.7
+	cyl.height = 0.08
 	fan.mesh = cyl
 	fan.material_override = dark
 	fan.rotation.x = PI / 2.0
-	fan.position = Vector3(0, 0, nac_l * 0.1)
+	fan.position = Vector3(0, 0, nac_l * 0.14)
 	nac.add_child(fan)
 	parts.fan_discs.append(fan)
-	# Exhaust cone
+	# Fan spinner cone (rotationally symmetric, so it can stay static)
+	_mesh_node(_lathe([Vector2(nac_l * 0.02, 0.02), Vector2(nac_l * 0.14, nac_r * 0.2)]),
+		_mat(Color(0.7, 0.71, 0.74), 0.3, 0.9), nac, Vector3.ZERO, "spinner")
+	# Exhaust: outer cone + hot core pipe
 	_mesh_node(_lathe([Vector2(0, nac_r * 0.32), Vector2(nac_l * 0.18, 0.03)]), dark, nac, Vector3(0, 0, nac_l * 0.97), "exhaust")
+	_mesh_node(_lathe([Vector2(-nac_l * 0.04, nac_r * 0.4), Vector2(nac_l * 0.04, nac_r * 0.34)]),
+		_mat(Color(0.45, 0.4, 0.36), 0.5, 0.9), nac, Vector3(0, 0, nac_l * 0.99), "core_ring")
 
 static func _build_gear(cfg: AircraftConfig, root: Node3D, parts: Dictionary, R: float) -> void:
 	var leg := cfg.gear_leg_length
@@ -469,6 +515,12 @@ static func _build_gear(cfg: AircraftConfig, root: Node3D, parts: Dictionary, R:
 			wheel.rotation.z = PI / 2.0
 			wheel.position = wp
 			pivot.add_child(wheel)
+			# Silver hub cap so wheels read as wheels, not rubber pucks
+			var hub := CylinderMesh.new()
+			hub.top_radius = wheel_r * 0.45
+			hub.bottom_radius = wheel_r * 0.45
+			hub.height = wheel_r * 0.46
+			_mesh_node(hub, strut_mat, wheel, Vector3.ZERO, "hub")
 			parts.wheels.append(wheel)
 
 static func _build_heli(cfg: AircraftConfig, root: Node3D, parts: Dictionary, primary: Color, accent: Color, tail_col: Color) -> void:
