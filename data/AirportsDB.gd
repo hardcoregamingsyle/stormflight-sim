@@ -104,7 +104,7 @@ const DATA := {
 			{"id": "02/20", "heading": 24.0, "length": 2600.0, "width": 45.0, "offset": [0.0, 0.0]},
 		],
 		"gates": 4, "tower_height": 30.0, "hangars": 2,
-		"desc": "The far-north gateway. Snow squalls and mountain waves keep pilots honest.",
+		"desc": "Gateway to the polar south. Snow squalls and mountain waves keep pilots honest.",
 	},
 	"sst": {
 		"icao": "SSST", "name": "Sunset Strip", "size": "small",

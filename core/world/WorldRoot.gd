@@ -81,6 +81,8 @@ func _ready() -> void:
 	rule_monitor = rm
 	add_child(rm)
 
+	add_child((load("res://core/world/TaxiGuide.gd") as GDScript).new())
+
 	if Quality.max_ai_traffic > 0 and not Game.is_multiplayer():
 		var traffic: Node = (load("res://core/traffic/AITraffic.gd") as GDScript).new()
 		add_child(traffic)

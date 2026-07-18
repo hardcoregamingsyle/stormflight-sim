@@ -81,8 +81,25 @@ func _screenshots() -> void:
 	rig.orbit_yaw = 2.5
 	rig.orbit_pitch = 0.18
 	rig.distance = 55.0
+	# Run the ATC flow so the taxi guide chevrons are visible in the shot
+	var p0 := Game.player_aircraft as Aircraft
+	p0.propulsion.start_all()
+	p0.engines_on = true
+	ATC._do_clearance()
+	await get_tree().create_timer(0.5).timeout
+	ATC._do_taxi()
 	await get_tree().create_timer(1.5).timeout
+	rig.orbit_pitch = 0.55
+	rig.distance = 160.0
+	await get_tree().create_timer(0.5).timeout
 	await _snap(dir + "/gate_a320.png")
+
+	# Region map overlay
+	hud.map_view.visible = true
+	hud.map_view.queue_redraw()
+	await get_tree().create_timer(0.8).timeout
+	await _snap(dir + "/map.png")
+	hud.map_view.visible = false
 
 	# Airborne over the coast, gear up, golden hour
 	var p := Game.player_aircraft as Aircraft

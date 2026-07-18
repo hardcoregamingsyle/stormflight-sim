@@ -21,8 +21,10 @@ func _init() -> void:
 	var s := Game.WORLD_SEED
 	continent.seed = s
 	continent.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	continent.frequency = 1.0 / 52000.0
-	continent.fractal_octaves = 4
+	# Long wavelength = large coherent landmasses instead of confetti islands
+	continent.frequency = 1.0 / 110000.0
+	continent.fractal_octaves = 3
+	continent.fractal_gain = 0.42
 	mountains.seed = s + 7
 	mountains.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	mountains.fractal_type = FastNoiseLite.FRACTAL_RIDGED
@@ -88,7 +90,7 @@ func _ready() -> void:
 ## Single source of truth for terrain elevation at absolute world (x, z).
 func height(x: float, z: float) -> float:
 	var base := continent.get_noise_2d(x, z)
-	var land := smoothstep(-0.02, 0.3, base)
+	var land := smoothstep(-0.06, 0.26, base)
 	var h := -38.0 + land * 105.0
 	# Western mountain belt
 	var mfac := clampf((-x - 55000.0) / 70000.0, 0.0, 1.0) * land
@@ -121,6 +123,25 @@ func _color(x: float, z: float, h: float, slope: float) -> Color:
 	# subtle variation
 	c = c.darkened(absf(detail.get_noise_2d(x * 0.5, z * 0.5)) * 0.15)
 	return c
+
+# ------------------------------------------------------------------ map
+## One-shot overview texture of the whole region for the HUD map.
+func build_map_texture(res: int = 192, span: float = 460000.0) -> ImageTexture:
+	var img := Image.create(res, res, false, Image.FORMAT_RGB8)
+	for py in res:
+		var wz := (float(py) / res - 0.5) * span
+		for px in res:
+			var wx := (float(px) / res - 0.5) * span
+			var h := height(wx, wz)
+			var c: Color
+			if h < -14.0:
+				c = Color(0.04, 0.11, 0.22)
+			elif h < 0.5:
+				c = Color(0.08, 0.19, 0.33)
+			else:
+				c = _color(wx, wz, h, 0.0).lightened(clampf(h / 2400.0, 0.0, 0.4))
+			img.set_pixel(px, py, c)
+	return ImageTexture.create_from_image(img)
 
 # ------------------------------------------------------------------ streaming
 ## Called by WorldRoot every ~0.5 s with the player's ABSOLUTE position.

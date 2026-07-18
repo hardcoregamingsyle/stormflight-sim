@@ -440,3 +440,73 @@ func _process(dt: float) -> void:
 func _fmt_alt(alt_m: float) -> String:
 	var ft := int(round(alt_m * Atmosphere.M_TO_FT / 100.0) * 100)
 	return str(ft).insert(str(ft).length() - 3, ",") if ft >= 1000 else str(ft)
+
+# ------------------------------------------------------------------ HUD guidance
+## One-line "what do I do now" instruction for the HUD advisory bar.
+func next_step() -> String:
+	var p := _player()
+	if p == null or world == null:
+		return ""
+	match phase:
+		Phase.IDLE:
+			return ""
+		Phase.AT_GATE:
+			if not p.propulsion.any_running():
+				return "Start engines (I), then request clearance on the radio (Tab)"
+			return "Request clearance on the radio (Tab)"
+		Phase.CLEARANCE:
+			if p.cfg.is_helicopter():
+				return "Request hover departure (Tab)"
+			if p.gear.parking_brake:
+				return "Release parking brake (N), push back if needed (U), then request taxi (Tab)"
+			return "Request pushback & taxi on the radio (Tab)"
+		Phase.TAXI_OUT:
+			return "Taxi along the GREEN GUIDE LINE to runway %s - max 25 kts, STOP at the red hold bar" % dep_runway.get("id_str", "")
+		Phase.HOLDING_SHORT:
+			return "Holding short of runway %s - report ready for departure (Tab)" % dep_runway.get("id_str", "")
+		Phase.LINEUP:
+			return "Line up on runway %s and WAIT - takeoff clearance is coming" % dep_runway.get("id_str", "")
+		Phase.TAKEOFF_CLEARED:
+			return "CLEARED FOR TAKEOFF runway %s - full throttle (W), rotate, then gear up (G)" % dep_runway.get("id_str", "")
+		Phase.DEPARTURE:
+			return "Climb out - gear up (G), flaps up (V) as you accelerate"
+		Phase.ENROUTE:
+			if assigned_altitude > 0.0:
+				return "Cruise at %s ft toward %s - request approach when close (Tab)" % [_fmt_alt(assigned_altitude), _dest_name()]
+			return "Proceed toward %s - request approach when close (Tab)" % _dest_name()
+		Phase.APPROACH:
+			return "Descend to %s ft, line up with runway %s - gear down (G) & flaps (F) before final" % [_fmt_alt(assigned_altitude), arr_runway.get("id_str", "")]
+		Phase.FINAL:
+			return "CLEARED TO LAND runway %s - PAPI: 2 white 2 red = on glide, aim < 200 fpm" % arr_runway.get("id_str", "")
+		Phase.TAXI_IN:
+			return "Exit the runway, follow the GREEN GUIDE LINE to your gate, stop & shut down (I)"
+		Phase.EMERGENCY:
+			return "EMERGENCY - land on any runway at %s, all clearances granted" % AirportsDB.get_airport(destination).name if destination != "" else "EMERGENCY - land at the nearest airport"
+	return ""
+
+## Absolute world position the pilot should currently be heading for
+## (Vector3.ZERO when there is no meaningful target).
+func target_point() -> Vector3:
+	var p := _player()
+	if p == null or world == null:
+		return Vector3.ZERO
+	match phase:
+		Phase.TAXI_OUT:
+			if not assigned_taxi_route.is_empty():
+				return assigned_taxi_route[assigned_taxi_route.size() - 1]
+		Phase.HOLDING_SHORT, Phase.LINEUP, Phase.TAKEOFF_CLEARED:
+			if not dep_runway.is_empty():
+				return (dep_runway.threshold as Vector3) + (dep_runway.dir as Vector3) * dep_runway.rw.length
+		Phase.DEPARTURE, Phase.ENROUTE:
+			var d := _dest_id()
+			if d != "":
+				return AirportsDB.position_m(d)
+		Phase.APPROACH, Phase.FINAL, Phase.EMERGENCY:
+			if not arr_runway.is_empty():
+				return arr_runway.threshold as Vector3
+			if destination != "":
+				return AirportsDB.position_m(destination)
+		Phase.TAXI_IN:
+			if assigned_gate_pos != Vector3.ZERO:
+				return assigned_gate_pos
+	return Vector3.ZERO

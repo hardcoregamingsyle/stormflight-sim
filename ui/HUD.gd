@@ -23,16 +23,33 @@ var lbl_fuel: Label
 var lbl_gear: Label
 var lbl_flaps: Label
 var lbl_annunc: Label
+var lbl_thrust: Label
+var lbl_eng_status: Label
+var eng_cluster: HBoxContainer
+var eng_bars: Array = []
+var eng_dots: Array = []
+var gear_dots: Array = []
+var flap_segs: Array = []
+var annunc_chips: Dictionary = {}
+var lbl_next_step: Label
+var lbl_target: Label
+var lbl_atc_hint: Label
+var banner_mode: Label
 var health_bars: Dictionary = {}
 var lbl_warn: Label
 var lbl_job: Label
 var job_panel: PanelContainer
+var map_zoom := 1.0
+var _trail: Array = []
+var _trail_timer := 0.0
+var _map_tex: ImageTexture = null
 
 # Panels
 var toast_box: VBoxContainer
 var atc_panel: PanelContainer
 var atc_log: RichTextLabel
 var atc_options_box: VBoxContainer
+var atc_phase_lbl: Label
 var jobs_panel: PanelContainer
 var jobs_list: VBoxContainer
 var map_view: Control
@@ -106,34 +123,109 @@ func _build_instruments() -> void:
 	lbl_hdg = UIKit.label("HDG 000", 22, UIKit.TEXT)
 	lbl_hdg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vc.add_child(lbl_hdg)
-	# Bottom left: engine/fuel/config
+	# Bottom left: the avionics cluster - engines, thrust, fuel, gear lights,
+	# flap segments and annunciators
 	var pb := _panel_at(Control.PRESET_BOTTOM_LEFT)
-	var vb := UIKit.vbox(4)
+	var vb := UIKit.vbox(6)
 	pb.add_child(vb)
+
+	# --- Engine gauges: one vertical N1 bar + status light per engine ---
+	var eng_row := UIKit.hbox(10)
+	eng_row.add_child(UIKit.label("ENG", 13, UIKit.DIM))
+	eng_cluster = UIKit.hbox(5)
+	eng_row.add_child(eng_cluster)
+	lbl_eng_status = UIKit.label("OFF", 14, UIKit.DIM)
+	eng_row.add_child(lbl_eng_status)
+	lbl_n1 = UIKit.label("N1 0%", 14, UIKit.TEXT)
+	eng_row.add_child(lbl_n1)
+	vb.add_child(eng_row)
+
+	# --- Throttle & thrust ---
 	var thr_row := UIKit.hbox(8)
 	thr_row.add_child(UIKit.label("THR", 13, UIKit.DIM))
-	bar_throttle = UIKit.bar(0.0, UIKit.ACCENT, 140, 12)
+	bar_throttle = UIKit.bar(0.0, UIKit.ACCENT, 150, 13)
 	thr_row.add_child(bar_throttle)
-	lbl_n1 = UIKit.label("N1 0%", 13, UIKit.DIM)
-	thr_row.add_child(lbl_n1)
+	lbl_thrust = UIKit.label("0%", 14, UIKit.TEXT)
+	thr_row.add_child(lbl_thrust)
 	vb.add_child(thr_row)
+
+	# --- Fuel ---
 	var fuel_row := UIKit.hbox(8)
 	fuel_row.add_child(UIKit.label("FUEL", 13, UIKit.DIM))
-	bar_fuel = UIKit.bar(1.0, UIKit.GOOD, 140, 12)
+	bar_fuel = UIKit.bar(1.0, UIKit.GOOD, 150, 13)
 	fuel_row.add_child(bar_fuel)
 	lbl_fuel = UIKit.label("", 13, UIKit.DIM)
 	fuel_row.add_child(lbl_fuel)
 	vb.add_child(fuel_row)
-	var cfg_row := UIKit.hbox(12)
-	lbl_gear = UIKit.label("GEAR DN", 15, UIKit.GOOD)
-	cfg_row.add_child(lbl_gear)
-	lbl_flaps = UIKit.label("FLAPS 0", 15, UIKit.DIM)
-	cfg_row.add_child(lbl_flaps)
+
+	# --- Gear lights + flap segments ---
+	var cfg_row := UIKit.hbox(14)
+	var gear_box := UIKit.hbox(4)
+	gear_box.add_child(UIKit.label("GEAR", 13, UIKit.DIM))
+	for i in 3:
+		var d := UIKit.label("●", 17, UIKit.GOOD)
+		gear_dots.append(d)
+		gear_box.add_child(d)
+	lbl_gear = UIKit.label("DOWN", 14, UIKit.GOOD)
+	gear_box.add_child(lbl_gear)
+	cfg_row.add_child(gear_box)
+	var flap_box := UIKit.hbox(3)
+	flap_box.add_child(UIKit.label("FLAPS", 13, UIKit.DIM))
+	for i in 4:
+		var seg := UIKit.label("▮", 15, Color(0.3, 0.36, 0.45))
+		flap_segs.append(seg)
+		flap_box.add_child(seg)
+	lbl_flaps = UIKit.label("0%", 14, UIKit.DIM)
+	flap_box.add_child(lbl_flaps)
+	cfg_row.add_child(flap_box)
 	vb.add_child(cfg_row)
-	lbl_annunc = UIKit.label("", 14, UIKit.WARN)
+
+	# --- Annunciator chips ---
+	var ann_row := UIKit.hbox(6)
+	for spec in [["AP", UIKit.GOOD], ["PARK BRK", UIKit.BAD], ["SPLR", UIKit.WARN], ["A/B", Color(1.0, 0.5, 0.1)], ["PUSHBACK", Color(0.3, 0.85, 1.0)], ["TRIM", UIKit.DIM]]:
+		var chip := _make_chip(spec[0], spec[1])
+		annunc_chips[spec[0]] = chip
+		ann_row.add_child(chip)
+	vb.add_child(ann_row)
+	lbl_annunc = UIKit.label("", 13, UIKit.WARN)
 	vb.add_child(lbl_annunc)
-	var hint := UIKit.label("Tab ATC  |  J jobs  |  M map  |  C camera  |  F1 help", 12, UIKit.DIM)
-	vb.add_child(hint)
+	vb.add_child(UIKit.label("Tab ATC  |  J jobs  |  M map  |  C camera  |  F1 help", 12, UIKit.DIM))
+
+func _make_chip(text: String, color: Color) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color * Color(1, 1, 1, 0.22)
+	sb.border_color = color
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_left = 7
+	sb.content_margin_right = 7
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	p.add_theme_stylebox_override("panel", sb)
+	var l := UIKit.label(text, 12, color)
+	p.add_child(l)
+	p.visible = false
+	return p
+
+func _ensure_engine_bars(count: int) -> void:
+	if eng_bars.size() == count:
+		return
+	for c in eng_cluster.get_children():
+		c.queue_free()
+	eng_bars.clear()
+	eng_dots.clear()
+	for i in count:
+		var col := UIKit.vbox(1)
+		var b := UIKit.bar(0.0, UIKit.ACCENT, 15, 40)
+		b.fill_mode = ProgressBar.FILL_BOTTOM_TO_TOP
+		eng_bars.append(b)
+		col.add_child(b)
+		var dot := UIKit.label("●", 13, UIKit.DIM)
+		dot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		eng_dots.append(dot)
+		col.add_child(dot)
+		eng_cluster.add_child(col)
 
 func _build_health() -> void:
 	var p := _panel_at(Control.PRESET_BOTTOM_RIGHT)
@@ -151,9 +243,40 @@ func _build_health() -> void:
 		v.add_child(row)
 
 func _build_warnings() -> void:
+	# NEXT STEP advisory: always tells the pilot what to do now
+	var step_panel := UIKit.panel(Color(0.1, 0.09, 0.03, 0.88))
+	step_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	step_panel.offset_top = 52
+	step_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var sv := UIKit.vbox(0)
+	step_panel.add_child(sv)
+	lbl_next_step = UIKit.label("", 15, UIKit.WARN)
+	lbl_next_step.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sv.add_child(lbl_next_step)
+	lbl_target = UIKit.label("", 13, UIKit.DIM)
+	lbl_target.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sv.add_child(lbl_target)
+	add_child(step_panel)
+
+	# Big mode banner (pushback etc)
+	banner_mode = UIKit.label("", 24, Color(0.3, 0.85, 1.0))
+	banner_mode.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	banner_mode.offset_top = -170
+	banner_mode.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	banner_mode.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(banner_mode)
+
+	# "ATC is waiting" pulsing hint
+	lbl_atc_hint = UIKit.label("", 16, UIKit.ACCENT)
+	lbl_atc_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	lbl_atc_hint.offset_top = -60
+	lbl_atc_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	lbl_atc_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(lbl_atc_hint)
+
 	lbl_warn = UIKit.label("", 34, UIKit.BAD)
 	lbl_warn.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	lbl_warn.offset_top = 90
+	lbl_warn.offset_top = 118
 	lbl_warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_warn.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(lbl_warn)
@@ -198,7 +321,11 @@ func _build_atc() -> void:
 	add_child(atc_panel)
 	var v := UIKit.vbox(6)
 	atc_panel.add_child(v)
-	v.add_child(UIKit.label("ATC RADIO  (numbers to reply, Tab to close)", 14, UIKit.ACCENT))
+	var head := UIKit.hbox(12)
+	head.add_child(UIKit.label("ATC RADIO  (numbers to reply, Tab to close)", 14, UIKit.ACCENT))
+	atc_phase_lbl = UIKit.label("", 13, UIKit.DIM)
+	head.add_child(atc_phase_lbl)
+	v.add_child(head)
 	atc_log = RichTextLabel.new()
 	atc_log.bbcode_enabled = true
 	atc_log.scroll_following = true
@@ -316,6 +443,19 @@ func _unhandled_input(_event: InputEvent) -> void:
 	pass
 
 func _input(event: InputEvent) -> void:
+	# Map zoom with the mouse wheel
+	if map_view.visible and event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			map_zoom = minf(map_zoom * 2.0, 16.0)
+			map_view.queue_redraw()
+			get_viewport().set_input_as_handled()
+			return
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			map_zoom = maxf(map_zoom / 2.0, 1.0)
+			map_view.queue_redraw()
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if Game.typing:
 			if event.physical_keycode == KEY_ESCAPE:
@@ -351,6 +491,16 @@ func _input(event: InputEvent) -> void:
 			KEY_ENTER:
 				if Game.is_multiplayer() and not Game.typing:
 					_open_chat()
+					get_viewport().set_input_as_handled()
+			KEY_EQUAL, KEY_KP_ADD:
+				if map_view.visible:
+					map_zoom = minf(map_zoom * 2.0, 16.0)
+					map_view.queue_redraw()
+					get_viewport().set_input_as_handled()
+			KEY_MINUS, KEY_KP_SUBTRACT:
+				if map_view.visible:
+					map_zoom = maxf(map_zoom / 2.0, 1.0)
+					map_view.queue_redraw()
 					get_viewport().set_input_as_handled()
 			_:
 				if atc_panel.visible and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_9:
@@ -494,40 +644,101 @@ func _draw_map() -> void:
 	var w := Game.world as WorldRoot
 	if w == null:
 		return
+	var p := Game.player_aircraft as Aircraft
+	if _map_tex == null:
+		_map_tex = w.terrain.build_map_texture()
 	var rect := map_view.get_rect()
-	var world_span := 460000.0
-	var scale := minf(rect.size.x, rect.size.y) / world_span
+	var font := ThemeDB.fallback_font
+
+	const REGION := 460000.0
+	var span := REGION / map_zoom
+	var view_scale := minf(rect.size.x, rect.size.y) / span
 	var center := rect.size * 0.5
+	var center_world := Vector2.ZERO
+	if map_zoom > 1.01 and p:
+		center_world = Vector2(p.abs_position().x, p.abs_position().z)
 	var to_screen := func(abs_pos: Vector3) -> Vector2:
-		return center + Vector2(abs_pos.x, abs_pos.z) * scale
+		return center + (Vector2(abs_pos.x, abs_pos.z) - center_world) * view_scale
+
+	# Terrain background (texture spans the whole region)
+	var tl: Vector2 = to_screen.call(Vector3(-REGION * 0.5, 0, -REGION * 0.5))
+	map_view.draw_texture_rect(_map_tex, Rect2(tl, Vector2.ONE * REGION * view_scale), false)
+
+	# Grid every 50 km
+	var grid_col := Color(1, 1, 1, 0.07)
+	var k := -250000.0
+	while k <= 250000.0:
+		map_view.draw_line(to_screen.call(Vector3(k, 0, -REGION)), to_screen.call(Vector3(k, 0, REGION)), grid_col, 1.0)
+		map_view.draw_line(to_screen.call(Vector3(-REGION, 0, k)), to_screen.call(Vector3(REGION, 0, k)), grid_col, 1.0)
+		k += 50000.0
+
 	# Job route
 	if not Jobs.active_job.is_empty():
-		var a: Vector2 = to_screen.call(AirportsDB.position_m(Jobs.active_job.from))
-		var b: Vector2 = to_screen.call(AirportsDB.position_m(Jobs.active_job.to))
-		map_view.draw_line(a, b, UIKit.ACCENT, 2.0)
-	# Airports
+		var ja: Vector2 = to_screen.call(AirportsDB.position_m(Jobs.active_job.from))
+		var jb: Vector2 = to_screen.call(AirportsDB.position_m(Jobs.active_job.to))
+		map_view.draw_dashed_line(ja, jb, UIKit.ACCENT, 2.0, 12.0)
+
+	# Airports with runway orientation strips
 	for id in AirportsDB.ids():
 		var a2 := AirportsDB.get_airport(id)
-		var pos: Vector2 = to_screen.call(AirportsDB.position_m(id))
-		var col := UIKit.ACCENT if id == w.current_airport_id else Color(0.5, 0.8, 1.0)
-		map_view.draw_circle(pos, 5.0, col)
-		map_view.draw_string(ThemeDB.fallback_font, pos + Vector2(8, 4), "%s (%s)" % [a2.name, a2.icao], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.TEXT)
+		var apos := AirportsDB.position_m(id)
+		var pos: Vector2 = to_screen.call(apos)
+		if not rect.has_point(pos + rect.position):
+			continue
+		for rw in a2.runways:
+			var hh := deg_to_rad(float(rw.heading))
+			var rdir := Vector3(sin(hh), 0, -cos(hh))
+			var rc := apos + Vector3(float(rw.offset[0]), 0, float(rw.offset[1]))
+			var ra: Vector2 = to_screen.call(rc - rdir * float(rw.length) * 0.5)
+			var rb: Vector2 = to_screen.call(rc + rdir * float(rw.length) * 0.5)
+			map_view.draw_line(ra, rb, Color(0.95, 0.95, 1.0), maxf(2.0, float(rw.length) * view_scale * 0.02))
+		var col := UIKit.ACCENT if id == w.current_airport_id else Color(0.55, 0.8, 1.0)
+		map_view.draw_circle(pos, 4.0, col)
+		var dist_txt := ""
+		if p:
+			dist_txt = "  %d km" % int((apos - p.abs_position()).length() / 1000.0)
+		map_view.draw_string(font, pos + Vector2(7, -6), "%s (%s)%s" % [a2.name, a2.icao, dist_txt], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.TEXT)
+
+	# Flight trail
+	if _trail.size() > 1:
+		for i in range(_trail.size() - 1):
+			var alpha := 0.15 + 0.55 * float(i) / _trail.size()
+			map_view.draw_line(to_screen.call(_trail[i]), to_screen.call(_trail[i + 1]), Color(0.3, 0.9, 0.5, alpha), 1.5)
+
+	# ATC target
+	var tgt := ATC.target_point()
+	if tgt != Vector3.ZERO:
+		var tp: Vector2 = to_screen.call(tgt)
+		map_view.draw_arc(tp, 9.0, 0, TAU, 20, UIKit.WARN, 2.0)
+		if p:
+			map_view.draw_dashed_line(to_screen.call(p.abs_position()), tp, Color(1.0, 0.78, 0.2, 0.6), 1.5, 10.0)
+
 	# Player
-	var p := Game.player_aircraft as Aircraft
 	if p:
 		var pp: Vector2 = to_screen.call(p.abs_position())
 		var hdg := deg_to_rad(p.get_heading())
 		var fwd := Vector2(sin(hdg), -cos(hdg))
 		map_view.draw_colored_polygon(PackedVector2Array([
-			pp + fwd * 12.0, pp + fwd.rotated(2.5) * 8.0, pp + fwd.rotated(-2.5) * 8.0]), UIKit.GOOD)
-		map_view.draw_string(ThemeDB.fallback_font, pp + Vector2(10, -8), "YOU  %d kts  %d ft" % [int(p.get_ias_kts()), int(p.get_alt_ft())], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.GOOD)
+			pp + fwd * 13.0, pp + fwd.rotated(2.5) * 9.0, pp + fwd.rotated(-2.5) * 9.0]), UIKit.GOOD)
+		map_view.draw_string(font, pp + Vector2(11, -9), "YOU  %d kts  %d ft" % [int(p.get_ias_kts()), int(p.get_alt_ft())], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.GOOD)
+
 	# Remote players
 	for id in Net.proxies.keys():
 		var craft = Net.proxies[id].craft
 		if is_instance_valid(craft):
 			var rp: Vector2 = to_screen.call(craft.abs_position())
 			map_view.draw_circle(rp, 4.0, Color(0.55, 0.85, 1.0))
-			map_view.draw_string(ThemeDB.fallback_font, rp + Vector2(7, 4), Net.players.get(id, {}).get("name", "?"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.55, 0.85, 1.0))
+			map_view.draw_string(font, rp + Vector2(7, 4), Net.players.get(id, {}).get("name", "?"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.55, 0.85, 1.0))
+
+	# HUD chrome: north arrow, scale bar, zoom + legend
+	map_view.draw_string(font, Vector2(22, 34), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UIKit.TEXT)
+	map_view.draw_colored_polygon(PackedVector2Array([Vector2(30, 40), Vector2(24, 58), Vector2(36, 58)]), UIKit.TEXT)
+	var bar_km := 100.0 / map_zoom
+	var bar_px := bar_km * 1000.0 * view_scale
+	var by := rect.size.y - 30.0
+	map_view.draw_line(Vector2(24, by), Vector2(24 + bar_px, by), UIKit.TEXT, 2.0)
+	map_view.draw_string(font, Vector2(24, by - 8), "%d km" % int(bar_km), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.TEXT)
+	map_view.draw_string(font, Vector2(24, by + 22), "M close  |  +/- or scroll to zoom (x%d)  |  amber ring = ATC target  |  green trail = your path" % int(map_zoom), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UIKit.DIM)
 
 # ------------------------------------------------------------------ tick
 func _process(dt: float) -> void:
@@ -551,44 +762,130 @@ func _process(dt: float) -> void:
 	lbl_hdg.text = "HDG %03d" % int(p.get_heading())
 	lbl_clock.text = "%02d:%02d  |  %s  wind %d kts" % [int(w.hour) % 24, int(fmod(w.hour, 1.0) * 60.0), w.weather, int(w.wind_base.length() * Atmosphere.MS_TO_KTS)]
 	lbl_phase.text = "%s  |  %s" % [AirportsDB.get_airport(w.nearest_airport_id(p.abs_position())).icao, _phase_name()]
+	if atc_panel.visible:
+		atc_phase_lbl.text = "Phase: %s" % _phase_name()
+
+	# --- Engines ---
+	_ensure_engine_bars(p.cfg.engine_count)
+	var any_run := p.propulsion.any_running()
+	for i in p.cfg.engine_count:
+		var n1_i: float = p.propulsion.n1[i]
+		(eng_bars[i] as ProgressBar).value = n1_i
+		var dot := eng_dots[i] as Label
+		var col := UIKit.DIM
+		if p.propulsion.running[i]:
+			col = UIKit.GOOD if n1_i > 0.15 else UIKit.WARN
+		elif p.propulsion.health[i] < 0.15:
+			col = UIKit.BAD
+		dot.add_theme_color_override("font_color", col)
+	if any_run:
+		lbl_eng_status.text = "RUN"
+		lbl_eng_status.add_theme_color_override("font_color", UIKit.GOOD)
+	else:
+		lbl_eng_status.text = "OFF - press I"
+		lbl_eng_status.add_theme_color_override("font_color", UIKit.BAD)
+	lbl_n1.text = "N1 %d%%" % int(p.propulsion.average_n1() * 100.0)
 
 	bar_throttle.value = p.ctl_throttle
-	lbl_n1.text = "N1 %d%%" % int(p.propulsion.average_n1() * 100.0)
+	lbl_thrust.text = "%d%%%s" % [int(p.ctl_throttle * 100.0), "  AB" if p.propulsion.afterburner else ""]
 	bar_fuel.value = p.fuel_fraction()
 	lbl_fuel.text = "%d kg" % int(p.fuel_kg)
 	var fill := bar_fuel.get_theme_stylebox("fill") as StyleBoxFlat
 	fill.bg_color = UIKit.GOOD if p.fuel_fraction() > 0.2 else UIKit.BAD
 
-	if p.cfg.gear_retractable:
+	# --- Gear lights: green = locked down, amber = transit, dark = up ---
+	var gcol: Color
+	if not p.cfg.gear_retractable:
+		gcol = UIKit.GOOD
+		lbl_gear.text = "FIXED"
+	else:
 		var gf := p.gear.gear_frac
 		if gf > 0.98:
-			lbl_gear.text = "GEAR DN"
-			lbl_gear.add_theme_color_override("font_color", UIKit.GOOD)
+			gcol = UIKit.GOOD
+			lbl_gear.text = "DOWN"
 		elif gf < 0.02:
-			lbl_gear.text = "GEAR UP"
-			lbl_gear.add_theme_color_override("font_color", UIKit.DIM)
+			gcol = Color(0.3, 0.36, 0.45)
+			lbl_gear.text = "UP"
 		else:
-			lbl_gear.text = "GEAR ..."
-			lbl_gear.add_theme_color_override("font_color", UIKit.WARN)
-	else:
-		lbl_gear.text = "GEAR FIXED"
-		lbl_gear.add_theme_color_override("font_color", UIKit.DIM)
-	lbl_flaps.text = "FLAPS %d%%" % int(p.flap_setting * 100)
+			gcol = UIKit.WARN
+			lbl_gear.text = "TRANSIT"
+	if p.damage_sys.has_failed("gear"):
+		gcol = UIKit.BAD
+		lbl_gear.text = "JAMMED (hold G)"
+	for d in gear_dots:
+		(d as Label).add_theme_color_override("font_color", gcol)
+	lbl_gear.add_theme_color_override("font_color", gcol)
 
-	var ann := ""
-	if p.autopilot.engaged:
-		ann += "AP  "
-	if p.gear.parking_brake:
-		ann += "PARK BRK  "
-	if p.spoiler_on:
-		ann += "SPOILERS  "
-	if p.propulsion.afterburner:
-		ann += "AFTERBURNER  "
+	# --- Flap segments ---
+	var notch := int(round(p.flap_setting * 4.0))
+	for i in 4:
+		(flap_segs[i] as Label).add_theme_color_override("font_color",
+			UIKit.ACCENT if i < notch else Color(0.3, 0.36, 0.45))
+	lbl_flaps.text = "%d%%" % int(p.flap_frac * 100)
+	if p.damage_sys.has_failed("flaps"):
+		lbl_flaps.text += " JAM"
+
+	# --- Annunciator chips ---
+	(annunc_chips["AP"] as Control).visible = p.autopilot.engaged
+	(annunc_chips["PARK BRK"] as Control).visible = p.gear.parking_brake
+	(annunc_chips["SPLR"] as Control).visible = p.spoiler_frac > 0.05
+	(annunc_chips["A/B"] as Control).visible = p.propulsion.afterburner
+	(annunc_chips["PUSHBACK"] as Control).visible = p.pushback_active
+	(annunc_chips["TRIM"] as Control).visible = absf(p.ctl_trim) > 0.02
+	lbl_annunc.text = ""
+
+	# --- Mode banner ---
 	if p.pushback_active:
-		ann += "PUSHBACK  "
-	if not p.propulsion.any_running():
-		ann += "ENGINES OFF (press I)  "
-	lbl_annunc.text = ann
+		banner_mode.text = "PUSHBACK IN PROGRESS  -  press U to stop, A/D to steer"
+		banner_mode.add_theme_color_override("font_color", Color(0.3, 0.85, 1.0))
+	elif p.gear.parking_brake and any_run and p.gear.on_ground:
+		banner_mode.text = "PARKING BRAKE SET  -  press N to release"
+		banner_mode.add_theme_color_override("font_color", UIKit.WARN)
+	else:
+		banner_mode.text = ""
+
+	# --- NEXT STEP advisory + target guidance ---
+	lbl_next_step.text = ATC.next_step()
+	var tgt := ATC.target_point()
+	if tgt != Vector3.ZERO:
+		var delta := tgt - p.abs_position()
+		var dist_m := Vector2(delta.x, delta.z).length()
+		var bearing := fposmod(rad_to_deg(atan2(delta.x, -delta.z)), 360.0)
+		var rel := wrapf(bearing - p.get_heading(), -180.0, 180.0)
+		var arrow := "^"
+		if absf(rel) < 20.0:
+			arrow = "STRAIGHT AHEAD"
+		elif rel >= 20.0 and rel < 70.0:
+			arrow = "AHEAD-RIGHT >"
+		elif rel >= 70.0 and rel < 110.0:
+			arrow = "RIGHT >>"
+		elif rel >= 110.0:
+			arrow = "BEHIND (turn right)"
+		elif rel <= -20.0 and rel > -70.0:
+			arrow = "< AHEAD-LEFT"
+		elif rel <= -70.0 and rel > -110.0:
+			arrow = "<< LEFT"
+		else:
+			arrow = "BEHIND (turn left)"
+		var dist_txt := "%d m" % int(dist_m) if dist_m < 3000.0 else "%.1f km" % (dist_m / 1000.0)
+		lbl_target.text = "Target: %s  -  %s  (hdg %03d)" % [dist_txt, arrow, int(bearing)]
+	else:
+		lbl_target.text = ""
+
+	# --- ATC waiting hint ---
+	if not ATC.options.is_empty() and not atc_panel.visible:
+		lbl_atc_hint.text = "Tab > ATC radio  (%d option%s)" % [ATC.options.size(), "s" if ATC.options.size() > 1 else ""]
+		lbl_atc_hint.visible = fmod(Time.get_ticks_msec() / 600.0, 2.0) < 1.4
+	else:
+		lbl_atc_hint.visible = false
+
+	# --- Map trail sampling ---
+	_trail_timer += 0.08
+	if _trail_timer > 2.0 and not p.gear.on_ground:
+		_trail_timer = 0.0
+		_trail.append(p.abs_position())
+		if _trail.size() > 240:
+			_trail.pop_front()
 
 	# Health bars
 	var eng_avg := 0.0

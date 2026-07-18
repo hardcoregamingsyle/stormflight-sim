@@ -231,16 +231,17 @@ static func build(airport_id: String) -> Dictionary:
 			hbars.append(Transform3D(Basis(Vector3.UP, -h), hold + Vector3(0, 0.14, 0)))
 			hbars.append(Transform3D(Basis(Vector3.UP, -h), hold + perp * 2.0 + Vector3(0, 0.14, 0)))
 			_multimesh(root, Vector3(20.0, 0.02, 0.5), hbars, Color(0.95, 0.85, 0.1), false)
-		# Yellow centerlines (taxiway + connectors)
+		# Yellow centerlines (taxiway + connectors) - wide and glowing so they
+		# read clearly from the cockpit
 		var yellows: Array = []
 		var tl := (t2 - t1).length()
-		for i in int(tl / 14.0):
-			yellows.append(Transform3D(Basis(Vector3.UP, -h), t1 + dir * (i * 14.0) + Vector3(0, 0.15, 0)))
+		for i in int(tl / 12.0):
+			yellows.append(Transform3D(Basis(Vector3.UP, -h), t1 + dir * (i * 12.0) + Vector3(0, 0.16, 0)))
 		for pair in [[e1, t1], [e2, t2], [center, tc]]:
-			for i in int(t_off / 14.0):
-				var p2: Vector3 = (pair[0] as Vector3) + perp * (i * 14.0)
-				yellows.append(Transform3D(Basis(Vector3.UP, -h + PI / 2.0), p2 + Vector3(0, 0.15, 0)))
-		_multimesh(root, Vector3(0.35, 0.02, 9.0), yellows, Color(0.95, 0.8, 0.1), false)
+			for i in int(t_off / 12.0):
+				var p2: Vector3 = (pair[0] as Vector3) + perp * (i * 12.0)
+				yellows.append(Transform3D(Basis(Vector3.UP, -h + PI / 2.0), p2 + Vector3(0, 0.16, 0)))
+		_multimesh(root, Vector3(0.85, 0.03, 8.0), yellows, Color(1.0, 0.82, 0.1), true)
 
 		# Graph nodes (absolute positions)
 		var pre := "r%d_" % rw_idx
@@ -289,6 +290,13 @@ static func build(airport_id: String) -> Dictionary:
 		if jetways:
 			# Beside the nose, angled - never in the parking envelope
 			_building(root, Vector3(2.6, 4.0, 16.0), gpos + main_perp * 24.0 + main_dir * 14.0, -main_h + 0.5, Color(0.7, 0.72, 0.76))
+		# Lead-in line: yellow dashes from the stand out to the apron edge so
+		# every gate visibly connects to the taxiway system
+		var lead: Array = []
+		for li in 5:
+			lead.append(Transform3D(Basis(Vector3.UP, -main_h + PI / 2.0),
+				gpos - main_perp * (10.0 + li * 13.0) + Vector3(0, 0.16, 0)))
+		_multimesh(root, Vector3(0.7, 0.03, 7.0), lead, Color(1.0, 0.82, 0.1), true)
 		# Gate faces the terminal (nose toward +perp)
 		var gate_heading := atan2(main_perp.x, -main_perp.z)
 		data.gates.append({
