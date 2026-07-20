@@ -203,7 +203,7 @@ func _build_instruments() -> void:
 	vb.add_child(ann_row)
 	lbl_annunc = UIKit.label("", 13, UIKit.WARN)
 	vb.add_child(lbl_annunc)
-	vb.add_child(UIKit.label("Tab ATC  |  J jobs  |  M map  |  C camera  |  F1 help", 12, UIKit.DIM))
+	vb.add_child(UIKit.label("R ATC  |  P jobs  |  M map  |  C camera  |  F1 help", 12, UIKit.DIM))
 
 func _make_chip(text: String, color: Color) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -336,7 +336,7 @@ func _build_atc() -> void:
 	var v := UIKit.vbox(6)
 	atc_panel.add_child(v)
 	var head := UIKit.hbox(12)
-	head.add_child(UIKit.label("ATC RADIO  (numbers to reply, Tab to close)", 14, UIKit.ACCENT))
+	head.add_child(UIKit.label("ATC RADIO  (numbers to reply, R to close)", 14, UIKit.ACCENT))
 	atc_phase_lbl = UIKit.label("", 13, UIKit.DIM)
 	head.add_child(atc_phase_lbl)
 	v.add_child(head)
@@ -404,10 +404,10 @@ func _build_help() -> void:
 	help_panel.add_child(v)
 	v.add_child(UIKit.label("QUICK REFERENCE  (F1 to close)", 16, UIKit.ACCENT))
 	var txt := UIKit.label(
-		"W/S throttle · A/D roll+steer · Arrows pitch/roll · Q/E rudder · ,/. trim\n" +
-		"G gear (hold=emergency) · F/V flaps · H spoilers · B brakes · N park brake\n" +
-		"I engines · U pushback · X autopilot · C camera · Right-drag look · Scroll zoom\n" +
-		"Tab ATC · 1-9 replies · J jobs · M map · Enter chat (MP) · Esc pause\n\n" +
+		"W/S thrust · A/D rudder+steer · I/K pitch · J/L roll · ,/. trim\n" +
+		"G gear (hold=emergency) · Q/E flaps · U/O speedbrake · N brakes · B park brake\n" +
+		"H engines · F reverse/pushback · X autopilot · C camera · Right-drag look · Scroll zoom\n" +
+		"R ATC · 1-9 replies · P jobs · M map · Enter chat (MP) · Esc pause\n\n" +
 		"PAPI beside runway: 2 white + 2 red = perfect glideslope.\n" +
 		"Land < 200 fpm for the butter bonus. Follow ATC for rewards every 15-30 s.",
 		14, UIKit.TEXT)
@@ -491,12 +491,12 @@ func _input(event: InputEvent) -> void:
 			KEY_M:
 				map_view.visible = not map_view.visible
 				get_viewport().set_input_as_handled()
-			KEY_J:
+			KEY_P:
 				jobs_panel.visible = not jobs_panel.visible
 				if jobs_panel.visible:
 					_refresh_jobs()
 				get_viewport().set_input_as_handled()
-			KEY_TAB:
+			KEY_R:
 				atc_panel.visible = not atc_panel.visible
 				get_viewport().set_input_as_handled()
 			KEY_F1:
@@ -796,7 +796,7 @@ func _process(dt: float) -> void:
 		lbl_eng_status.text = "RUN"
 		lbl_eng_status.add_theme_color_override("font_color", UIKit.GOOD)
 	else:
-		lbl_eng_status.text = "OFF - press I"
+		lbl_eng_status.text = "OFF - press H"
 		lbl_eng_status.add_theme_color_override("font_color", UIKit.BAD)
 	lbl_n1.text = "N1 %d%%" % int(p.propulsion.average_n1() * 100.0)
 
@@ -852,7 +852,7 @@ func _process(dt: float) -> void:
 
 	# --- Mode banner ---
 	if p.pushback_active:
-		banner_mode.text = "PUSHBACK IN PROGRESS  -  press U to stop, A/D to steer"
+		banner_mode.text = "PUSHBACK IN PROGRESS  -  press F to stop, A/D to steer"
 		banner_mode.add_theme_color_override("font_color", Color(0.3, 0.85, 1.0))
 	elif p.gear.parking_brake and any_run and p.gear.on_ground:
 		banner_mode.text = "PARKING BRAKE SET  -  press N to release"
@@ -890,7 +890,7 @@ func _process(dt: float) -> void:
 
 	# --- ATC waiting hint ---
 	if not ATC.options.is_empty() and not atc_panel.visible:
-		lbl_atc_hint.text = "Tab > ATC radio  (%d option%s)" % [ATC.options.size(), "s" if ATC.options.size() > 1 else ""]
+		lbl_atc_hint.text = "R > ATC radio  (%d option%s)" % [ATC.options.size(), "s" if ATC.options.size() > 1 else ""]
 		lbl_atc_hint.visible = fmod(Time.get_ticks_msec() / 600.0, 2.0) < 1.4
 	else:
 		lbl_atc_hint.visible = false

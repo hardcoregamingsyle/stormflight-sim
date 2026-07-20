@@ -340,9 +340,9 @@ func show_settings() -> void:
 	content.add_child(inv_row)
 
 	var ca_row := UIKit.hbox(12)
-	ca_row.add_child(UIKit.label("Turn coordination assist (auto-rudder)", 16))
+	ca_row.add_child(UIKit.label("Turn coordination assist (auto-rudder in banks)", 16))
 	var ca := CheckButton.new()
-	ca.button_pressed = bool(SaveGame.setting("coord_assist", true))
+	ca.button_pressed = bool(SaveGame.setting("coord_assist", false))
 	ca.toggled.connect(func(v): SaveGame.set_setting("coord_assist", v))
 	ca_row.add_child(ca)
 	content.add_child(ca_row)
@@ -368,11 +368,12 @@ func show_settings() -> void:
 func show_help() -> void:
 	var content := _scroll_page("How To Fly", show_home)
 	var sections := [
-		["CONTROLS", "W/S - throttle (helicopter: collective)\nA/D - roll left/right + nosewheel steering (helicopter: cyclic roll)\nArrow keys - pitch (Up/Down) & roll (Left/Right)\nQ/E - rudder pedals (helicopter: tail rotor)\n,/. - pitch trim\nG - landing gear (hold 3s for emergency extension)\nF/V - flaps down/up   |   H - spoilers/speedbrake\nB - wheel brakes (hold)   |   N - parking brake\nI - engine start/stop   |   U - pushback tug\nX - autopilot (holds heading/altitude/speed)\nC - camera views   |   Right-mouse drag - look   |   Scroll - zoom\nTurn coordination assist (Settings) auto-blends rudder into your turns."],
-		["PANELS", "Tab - ATC radio menu (reply with number keys 1-9)\nJ - jobs board (must be parked at an airport)\nM - region map   |   F1 - this help   |   Esc - pause menu\nEnter - chat (multiplayer)"],
-		["YOUR FIRST FLIGHT", "1. Press I to start engines and N to release the parking brake.\n2. Press Tab and request clearance, then taxi. Follow the yellow lines to the assigned runway; stay under 25 kts and STOP before the runway (hold short).\n3. When cleared for takeoff: line up, full throttle (hold W), rotate with the Down arrow around rotation speed.\n4. Gear up (G) once climbing, flaps up (V) as you accelerate. Follow ATC altitude.\n5. Near the destination, request approach, get established on final, gear down + flaps, aim for the runway numbers at a 3 degree slope (the PAPI lights beside the runway show white=high, red=low; 2 white 2 red is perfect).\n6. Touch down gently (<200 fpm = butter bonus), brake (B), exit the runway and taxi to your assigned gate. Shut down engines (I) to close the flight."],
-		["SKYCOINS", "Every 15-30 seconds the sim judges your flying: rewards for clean flying, following ATC, smooth landings and just being airborne - penalties for taxi speeding, runway incursions, overspeed, G-abuse, flying with gear down, crashing.\nJobs (J) pay the big money. Buy better aircraft in the hangar."],
-		["DAMAGE & FAILURES", "Airframes wear slowly with use, and fast when abused (over-G, overspeed, hard landings, afterburner abuse). The lower a system's health, the more likely it fails: engine flameouts, jammed flaps, stuck gear, hydraulic loss, avionics faults. Repair and refuel in the hangar - or declare an emergency (Tab) and get priority landing anywhere."],
+		["FLIGHT CONTROLS", "W - increase thrust   |   S - decrease thrust\nA - rudder left   |   D - rudder right   (also nosewheel steering on the ground)\nI - pitch up   |   K - pitch down\nJ - bank/roll left   |   L - bank/roll right\n,/. - pitch trim\n(Helicopter: W/S collective, A/D pedals, I/K cyclic fore/aft, J/L cyclic roll)\nEach key drives exactly one axis - nothing moves on its own."],
+		["SYSTEMS", "Q - flaps up (retract)   |   E - flaps down (extend)\nU - less speedbrake   |   O - more speedbrake\nG - landing gear (hold 3s for emergency gravity extension)\nN - wheel brakes (hold)   |   B - parking / landing brake (toggle)\nF - reverse thrust (rolling) / pushback tug (stopped)\nH - engine start/stop   |   X - autopilot (holds heading/altitude/speed)\nC - camera views   |   Right-mouse drag - look   |   Scroll - zoom"],
+		["PANELS", "R - ATC radio menu (reply with number keys 1-9)\nP - jobs board (must be parked at an airport)\nM - region map   |   F1 - this help   |   Esc - pause menu\nEnter - chat (multiplayer)"],
+		["YOUR FIRST FLIGHT", "1. Press H to start engines and B to release the parking brake.\n2. Press R and request clearance, then taxi. Follow the green guide line to the assigned runway; steer with A/D, stay under 25 kts and STOP before the runway (hold short).\n3. When cleared for takeoff: line up, full throttle (hold W), then ease the nose up with I around rotation speed.\n4. Gear up (G) once climbing, flaps up (Q) as you accelerate. Follow ATC altitude.\n5. Near the destination, request approach, get established on final, gear down (G) + flaps (E), aim for the runway numbers at a 3 degree slope (the PAPI lights beside the runway show white=high, red=low; 2 white 2 red is perfect).\n6. Touch down gently (<200 fpm = butter bonus), brake (N), exit the runway and taxi to your assigned gate. Shut down engines (H) to close the flight."],
+		["SKYCOINS", "Every 15-30 seconds the sim judges your flying: rewards for clean flying, following ATC, smooth landings and just being airborne - penalties for taxi speeding, runway incursions, overspeed, G-abuse, flying with gear down, crashing.\nJobs (P) pay the big money. Buy better aircraft in the hangar."],
+		["DAMAGE & FAILURES", "Airframes wear slowly with use, and fast when abused (over-G, overspeed, hard landings, afterburner abuse). The lower a system's health, the more likely it fails: engine flameouts, jammed flaps, stuck gear, hydraulic loss, avionics faults. Repair and refuel in the hangar - or declare an emergency (R) and get priority landing anywhere."],
 		["MULTIPLAYER", "Desktop hosts a session on TCP 9080; friends join by IP (LAN or port-forwarded internet). Everyone shares the same world and can collide - fly formation carefully!"],
 	]
 	for s in sections:

@@ -272,7 +272,7 @@ func _respawn() -> void:
 	player.fuel_kg = player.cfg.fuel_capacity * 0.5
 	player.flap_setting = 0.0
 	player.flap_frac = 0.0
-	player.spoiler_on = false
+	player.spoiler_setting = 0.0
 	player.gear.gear_frac = 1.0
 	player.gear.gear_target = 1.0
 	player.gear.jammed = false

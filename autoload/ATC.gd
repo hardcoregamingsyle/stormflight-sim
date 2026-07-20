@@ -452,34 +452,34 @@ func next_step() -> String:
 			return ""
 		Phase.AT_GATE:
 			if not p.propulsion.any_running():
-				return "Start engines (I), then request clearance on the radio (Tab)"
-			return "Request clearance on the radio (Tab)"
+				return "Start engines (H), then request clearance on the radio (R)"
+			return "Request clearance on the radio (R)"
 		Phase.CLEARANCE:
 			if p.cfg.is_helicopter():
-				return "Request hover departure (Tab)"
+				return "Request hover departure (R)"
 			if p.gear.parking_brake:
-				return "Release parking brake (N), push back if needed (U), then request taxi (Tab)"
-			return "Request pushback & taxi on the radio (Tab)"
+				return "Release parking brake (B), push back if needed (F), then request taxi (R)"
+			return "Request pushback & taxi on the radio (R)"
 		Phase.TAXI_OUT:
 			return "Taxi along the GREEN GUIDE LINE to runway %s - max 25 kts, STOP at the red hold bar" % dep_runway.get("id_str", "")
 		Phase.HOLDING_SHORT:
-			return "Holding short of runway %s - report ready for departure (Tab)" % dep_runway.get("id_str", "")
+			return "Holding short of runway %s - report ready for departure (R)" % dep_runway.get("id_str", "")
 		Phase.LINEUP:
 			return "Line up on runway %s and WAIT - takeoff clearance is coming" % dep_runway.get("id_str", "")
 		Phase.TAKEOFF_CLEARED:
 			return "CLEARED FOR TAKEOFF runway %s - full throttle (W), rotate, then gear up (G)" % dep_runway.get("id_str", "")
 		Phase.DEPARTURE:
-			return "Climb out - gear up (G), flaps up (V) as you accelerate"
+			return "Climb out - gear up (G), flaps up (Q) as you accelerate"
 		Phase.ENROUTE:
 			if assigned_altitude > 0.0:
-				return "Cruise at %s ft toward %s - request approach when close (Tab)" % [_fmt_alt(assigned_altitude), _dest_name()]
-			return "Proceed toward %s - request approach when close (Tab)" % _dest_name()
+				return "Cruise at %s ft toward %s - request approach when close (R)" % [_fmt_alt(assigned_altitude), _dest_name()]
+			return "Proceed toward %s - request approach when close (R)" % _dest_name()
 		Phase.APPROACH:
-			return "Descend to %s ft, line up with runway %s - gear down (G) & flaps (F) before final" % [_fmt_alt(assigned_altitude), arr_runway.get("id_str", "")]
+			return "Descend to %s ft, line up with runway %s - gear down (G) & flaps (E) before final" % [_fmt_alt(assigned_altitude), arr_runway.get("id_str", "")]
 		Phase.FINAL:
 			return "CLEARED TO LAND runway %s - PAPI: 2 white 2 red = on glide, aim < 200 fpm" % arr_runway.get("id_str", "")
 		Phase.TAXI_IN:
-			return "Exit the runway, follow the GREEN GUIDE LINE to your gate, stop & shut down (I)"
+			return "Exit the runway, follow the GREEN GUIDE LINE to your gate, stop & shut down (H)"
 		Phase.EMERGENCY:
 			return "EMERGENCY - land on any runway at %s, all clearances granted" % AirportsDB.get_airport(destination).name if destination != "" else "EMERGENCY - land at the nearest airport"
 	return ""

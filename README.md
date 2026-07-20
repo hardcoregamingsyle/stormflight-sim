@@ -52,10 +52,14 @@ P2P multiplayer. Runs in the browser and as a native Windows app with identical 
 
 | Key | Action | Key | Action |
 |---|---|---|---|
-| W / S | Throttle (heli: collective) | G | Gear (hold = emergency drop) |
-| A / D | Roll + nosewheel steering (heli: cyclic roll) | F / V | Flaps down / up |
-| Arrows | Pitch (Up/Down) & roll (Left/Right) | H | Spoilers / speedbrake |
-| Q / E | Rudder pedals (heli: tail rotor) | | |
+| W / S | Thrust up / down (heli: collective) | Q / E | Flaps up / down |
+| A / D | Rudder + nosewheel steering | U / O | Speedbrake less / more |
+| I / K | Pitch up / down | G | Gear (hold = emergency drop) |
+| J / L | Bank / roll left / right | N / B | Wheel brakes / parking brake |
+| , / . | Pitch trim | F | Reverse thrust / pushback |
+| H | Engines | X | Autopilot |
+| R | ATC radio (1–9 to reply) | P | Jobs board |
+| M | Map | C | Camera · F1 Help · Esc Pause |
 | , / . | Pitch trim | B / N | Brakes / parking brake |
 | I | Engines | U | Pushback tug |
 | X | Autopilot | C | Camera views |

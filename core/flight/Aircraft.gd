@@ -25,9 +25,10 @@ var ctl_trim := 0.0
 var flap_setting := 0.0          # commanded notch 0..1
 var flap_frac := 0.0             # actual surface position
 var slat_frac := 0.0
-var spoiler_on := false
-var spoiler_frac := 0.0
+var spoiler_setting := 0.0       # commanded speedbrake 0..1 (O up / U down)
+var spoiler_frac := 0.0          # actual panel position
 var pushback_active := false
+var reverse_active := false      # reverse thrust engaged this tick
 
 # --- State ---
 ## Total fuel. Reads/writes pass through the tank model so existing
@@ -187,11 +188,11 @@ func _collect_player_input(dt: float) -> void:
 	var tgt_roll := Input.get_axis("roll_left", "roll_right")
 	var tgt_yaw := Input.get_axis("yaw_left", "yaw_right")
 
-	# Turn-coordination assist: automatically feeds rudder to null the
-	# sideslip, so banking with A/D gives a clean coordinated turn with no
-	# uncommanded pitch/roll ghosting. Pedal input (Q/E) always dominates.
+	# Turn-coordination assist (OFF by default): when enabled, auto-feeds
+	# rudder to null sideslip during a bank. Off by default so every key does
+	# exactly and only what it says - your rudder is A/D, nothing else moves it.
 	if not cfg.is_helicopter() and not gear.on_ground \
-			and bool(SaveGame.setting("coord_assist", true)):
+			and bool(SaveGame.setting("coord_assist", false)):
 		var assist := clampf(aero.beta * 2.2, -0.5, 0.5)
 		tgt_yaw = clampf(tgt_yaw + assist * (1.0 - absf(tgt_yaw)), -1.0, 1.0)
 
@@ -211,9 +212,9 @@ func _collect_player_input(dt: float) -> void:
 		ctl_trim = clampf(ctl_trim - 0.12 * dt, -0.5, 0.5)
 
 	gear.brake_input = 1.0 if Input.is_action_pressed("brakes") else 0.0
-	# On the ground A/D steers the nosewheel too - players taxi with the same
-	# keys they bank with; pedals (Q/E) still work for precise corrections.
-	gear.steer_input = clampf(Input.get_axis("yaw_left", "yaw_right") + tgt_roll, -1.0, 1.0)
+	# On the ground the rudder pedals (A/D) steer the nosewheel - the same keys
+	# you use for yaw in the air, so taxiing feels natural.
+	gear.steer_input = tgt_yaw
 
 	if Input.is_action_just_pressed("gear_toggle"):
 		if gear.jammed or damage_sys.has_failed("gear"):
@@ -234,8 +235,12 @@ func _collect_player_input(dt: float) -> void:
 		_set_flap_notch(1)
 	if Input.is_action_just_pressed("flaps_up"):
 		_set_flap_notch(-1)
-	if Input.is_action_just_pressed("spoilers_toggle") and cfg.has_spoilers:
-		spoiler_on = not spoiler_on
+	if Input.is_action_just_pressed("spoiler_up") and cfg.has_spoilers:
+		spoiler_setting = clampf(spoiler_setting + 0.25, 0.0, 1.0)
+		EventBus.toast("Speedbrake %d%%" % int(spoiler_setting * 100), "info")
+	if Input.is_action_just_pressed("spoiler_down") and cfg.has_spoilers:
+		spoiler_setting = clampf(spoiler_setting - 0.25, 0.0, 1.0)
+		EventBus.toast("Speedbrake %d%%" % int(spoiler_setting * 100), "info")
 	if Input.is_action_just_pressed("parking_brake"):
 		gear.parking_brake = not gear.parking_brake
 		EventBus.toast("Parking brake %s" % ("SET" if gear.parking_brake else "RELEASED"), "info")
@@ -248,12 +253,18 @@ func _collect_player_input(dt: float) -> void:
 			propulsion.start_all()
 			engines_on = propulsion.any_running()
 			EventBus.toast("Engine start", "info")
+	# F does double duty on the ground: a tap while stopped toggles the
+	# pushback tug; holding it while rolling applies reverse thrust to slow
+	# down (jets/turboprops only). The two never overlap - one needs <2 kts,
+	# the other needs >6 kts.
 	if Input.is_action_just_pressed("pushback"):
 		if gear.on_ground and get_ias() < 2.0:
 			pushback_active = not pushback_active
 			if pushback_active:
 				gear.parking_brake = false
 			EventBus.toast("Pushback %s" % ("started" if pushback_active else "stopped"), "info")
+	reverse_active = Input.is_action_pressed("pushback") and gear.on_ground \
+		and get_ias() > 6.0 and propulsion.any_running() and not cfg.is_helicopter()
 	if Input.is_action_just_pressed("autopilot_toggle"):
 		if damage_sys.has_failed("avionics"):
 			EventBus.toast("Autopilot unavailable - avionics fault", "bad")
@@ -324,7 +335,7 @@ func _physics_process(dt: float) -> void:
 		flap_frac = move_toward(flap_frac, flap_setting, dt / 9.0)
 	var slat_target := 1.0 if (cfg.has_slats and flap_setting > 0.05) else 0.0
 	slat_frac = move_toward(slat_frac, slat_target, dt / 5.0)
-	spoiler_frac = move_toward(spoiler_frac, 1.0 if spoiler_on else 0.0, dt / 1.2)
+	spoiler_frac = move_toward(spoiler_frac, spoiler_setting, dt / 1.2)
 
 	# Fuel + engines: per-engine burn drains the correct tanks (centre first,
 	# then each engine's own wing), and the free surface keeps sloshing
@@ -383,6 +394,13 @@ func _physics_process(dt: float) -> void:
 				x = side * float(spans[(i / 2) % spans.size()])
 			var f_global := global_transform.basis * Vector3(0, 0, -t)
 			apply_force(f_global, global_transform.basis * Vector3(x, t_y, 0))
+
+		# Reverse thrust: hold F on the rollout to throw thrust forward and
+		# brake hard. Scales with throttle, so spool up for more retardation.
+		if reverse_active:
+			var rev_cap := maxf(cfg.max_thrust * cfg.engine_count, cfg.max_power * cfg.engine_count / 45.0)
+			var rev := rev_cap * 0.45 * clampf(0.3 + ctl_throttle, 0.3, 1.0) * propulsion.average_n1()
+			apply_central_force(global_transform.basis * Vector3(0, 0, rev))
 
 	# --- Gear ---
 	if cfg.is_helicopter() and not cfg.gear_retractable:

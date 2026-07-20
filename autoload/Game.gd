@@ -33,36 +33,41 @@ func _add(action: String, events: Array) -> void:
 		InputMap.action_add_event(action, ev)
 
 func _register_inputs() -> void:
-	# Throttle / collective
+	# --- Flight controls (explicit per-axis layout; no key drives two axes) ---
+	# Thrust on W/S
 	_add("throttle_up", [_key(KEY_W)])
 	_add("throttle_down", [_key(KEY_S)])
-	# Roll on A/D (and arrows) - the axis players reach for first
-	_add("roll_left", [_key(KEY_A), _key(KEY_LEFT)])
-	_add("roll_right", [_key(KEY_D), _key(KEY_RIGHT)])
-	# Rudder / pedals on Q/E
-	_add("yaw_left", [_key(KEY_Q)])
-	_add("yaw_right", [_key(KEY_E)])
-	# Pitch (elevator pull = arrow down, standard yoke sense)
-	_add("pitch_up", [_key(KEY_DOWN)])
-	_add("pitch_down", [_key(KEY_UP)])
+	# Rudder / pedals on A/D (also nosewheel steering on the ground)
+	_add("yaw_left", [_key(KEY_A)])
+	_add("yaw_right", [_key(KEY_D)])
+	# Pitch on I/K
+	_add("pitch_up", [_key(KEY_I)])
+	_add("pitch_down", [_key(KEY_K)])
+	# Roll / bank on J/L
+	_add("roll_left", [_key(KEY_J)])
+	_add("roll_right", [_key(KEY_L)])
 	# Trim
 	_add("trim_up", [_key(KEY_PERIOD)])
 	_add("trim_down", [_key(KEY_COMMA)])
-	# Systems
+	# --- Systems ---
+	# Flaps on Q (retract) / E (extend)
+	_add("flaps_up", [_key(KEY_Q)])
+	_add("flaps_down", [_key(KEY_E)])
+	# Spoilers / speedbrake on U (less) / O (more)
+	_add("spoiler_down", [_key(KEY_U)])
+	_add("spoiler_up", [_key(KEY_O)])
 	_add("gear_toggle", [_key(KEY_G)])
-	_add("flaps_down", [_key(KEY_F)])
-	_add("flaps_up", [_key(KEY_V)])
-	_add("spoilers_toggle", [_key(KEY_H)])
-	_add("brakes", [_key(KEY_B)])
-	_add("parking_brake", [_key(KEY_N)])
-	_add("engine_toggle", [_key(KEY_I)])
-	_add("pushback", [_key(KEY_U)])
+	_add("brakes", [_key(KEY_N)])           # wheel brakes (hold)
+	_add("parking_brake", [_key(KEY_B)])    # landing/park brake (toggle)
+	_add("pushback", [_key(KEY_F)])         # reverse thrust (rolling) / pushback (stopped)
+	# Engine start/stop and autopilot moved clear of the flight keys
+	_add("engine_toggle", [_key(KEY_H)])
 	_add("autopilot_toggle", [_key(KEY_X)])
-	# Views / panels
+	# --- Views / panels ---
 	_add("camera_cycle", [_key(KEY_C)])
 	_add("map_toggle", [_key(KEY_M)])
-	_add("jobs_toggle", [_key(KEY_J)])
-	_add("atc_toggle", [_key(KEY_TAB)])
+	_add("jobs_toggle", [_key(KEY_P)])
+	_add("atc_toggle", [_key(KEY_R)])
 	_add("help_toggle", [_key(KEY_F1)])
 	_add("pause_menu", [_key(KEY_ESCAPE)])
 	_add("chat", [_key(KEY_ENTER)])
