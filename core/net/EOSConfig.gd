@@ -13,11 +13,11 @@ class_name EOSConfig
 const PRODUCT_NAME := "Stormfighter Flight Sim"
 const PRODUCT_VERSION := "1.3.0"
 
-const PRODUCT_ID := ""       # e.g. "a1b2c3..."   (Product Settings)
-const SANDBOX_ID := ""       # e.g. "d4e5f6..."   (Live sandbox)
-const DEPLOYMENT_ID := ""    # e.g. "0f1e2d..."   (Live deployment)
-const CLIENT_ID := ""        # (Product Settings -> Clients)
-const CLIENT_SECRET := ""    # (Product Settings -> Clients)
+const PRODUCT_ID := "88280df138444d61a9a5bcea4689df28"
+const SANDBOX_ID := "32d0eba9f84f4a899ea248c1798cfa20"
+const DEPLOYMENT_ID := "32d0eba9f84f4a899ea248c1798cfa20"
+const CLIENT_ID := "xyza7891CfHh916sdI5hBWmKKyv3lAli"
+const CLIENT_SECRET := "CGljUi2fiDcI/oCqocs+TogjaN5g9etDN9BKI/NbwlU"
 
 # Matchmaking: everyone who Quick-Joins lands in a public lobby under this
 # bucket. The first player creates it, everyone after joins it - "join and
