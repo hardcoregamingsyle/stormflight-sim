@@ -3,11 +3,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    # Rebuild on any real code change. Ignore the paths the workflow itself
-    # writes back (the exported web build) so its own commit can't re-trigger
-    # an endless loop.
-    paths-ignore:
-      - 'docs/play/**'
 permissions:
   contents: write
 concurrency:
@@ -15,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 env:
   GODOT_VERSION: 4.7-stable
-  GAME_VERSION: v1.2.0
+  GAME_VERSION: v1.3.0
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,11 +31,10 @@ jobs:
       - name: Import project
         run: godot --headless --import || true
 
-      # tools/validate.gd can't run here (script mode has no autoload
-      # singletons, so every autoload reference reads as a false failure).
-      # The smoketest boots the real game headless - autoloads, every
-      # aircraft + airport build, and a scripted takeoff - and exits 1 on
-      # any script error or flight regression. Timeout guards a hung boot.
+      # The smoketest boots the real game headless - autoloads, every aircraft
+      # + airport build, and a scripted takeoff - and exits 1 on any script
+      # error or flight regression. This gates the release: a broken build
+      # (blank screen, parse error) never ships.
       - name: Smoketest (headless boot + scripted flight)
         run: timeout 420 godot --headless -- --smoketest
 
@@ -50,39 +44,30 @@ jobs:
           godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim.exe
           ls -la builds/windows
 
-      - name: Export Web
-        run: godot --headless --export-release "Web" docs/play/index.html
-
-      - name: Commit updated web build
-        run: |
-          git config user.name "Nitish Goel"
-          git config user.email "hardcorgamingstyle@gmail.com"
-          git add docs/play
-          git diff --cached --quiet || git commit -m "Update web build (${GAME_VERSION})"
-          git push
-          # Keep the release tag on the newest good build
-          git tag -f "$GAME_VERSION"
-          git push --force origin "refs/tags/${GAME_VERSION}"
-
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git tag -f "$GAME_VERSION"
+          git push --force origin "refs/tags/${GAME_VERSION}"
           cat > notes.md <<'EOF'
-          The flight-model and world overhaul. Download **StormfighterFlightSim.exe** below — a single self-contained executable, no zip, no install — or [play in your browser](https://hardcoregamingsyle.github.io/stormflight-sim/play/).
+          Windows desktop build. Download **StormfighterFlightSim.exe** below — one self-contained executable, no zip, no install. Windows 11 (x64).
+
+          ## New control scheme
+          Every key drives exactly one axis — nothing moves on its own.
+          - **W / S** thrust up / down · **A / D** rudder (+ nosewheel steering on the ground)
+          - **I / K** pitch · **J / L** bank/roll · **,/.** trim
+          - **Q / E** flaps · **U / O** speedbrake · **G** gear · **N** brakes · **B** parking brake
+          - **F** reverse thrust (rolling) / pushback (stopped) · **H** engines · **X** autopilot
+          - **R** ATC radio · **P** jobs · **M** map · **C** camera
 
           ## Flight model
-          - **Reworked controls**: A/D roll (and steer the nosewheel on the ground), Q/E rudder, arrows pitch/roll. New turn-coordination assist (on by default, Settings toggle) blends rudder into your turns automatically.
-          - **Fixed sideslip cross-coupling** — rudder input no longer causes uncommanded roll/pitch; slips now roll the aircraft away like a real airframe.
-          - **Fuel, weight & balance**: wing + centre tanks with real mass at real positions. The centre of mass and inertia move as fuel burns; each engine feeds from its own wing, so an engine-out slowly builds a lateral imbalance you must trim against (HUD annunciator + per-tank readout).
-          - **Fuel slosh**: part-full tanks surge under uncoordinated flight and drag the CG around.
-          - **Water physics**: ditch fast and the sea is concrete; ditch slow and you float with buoyancy and hydro drag — briefly. Vertical gust turbulence added.
-          - **Flipping over on the ground is now an instant crash** (flip / cartwheel / wing strike), not slow damage.
+          - Fixed the sideslip cross-coupling that made presses feel like the wrong thing happened.
+          - Fuel/weight/balance: multi-tank fuel with real mass, live CG + inertia, engine-out imbalance, fuel slosh.
+          - Water ditching physics; flipping over on the ground is an instant crash.
 
           ## Visuals
-          - Smoother lofted fuselages, canopy frames, polished intake lips, fan spinners, wheel hubs, clearcoat paint.
-          - Airport terminals with glass curtain walls, upgraded tower with beacon, gabled hangars, fuel farm, cargo containers, apron floodlights.
-          - Procedural city skyline with lit towers near every major airport, tree belts, environment glow and ground detail texturing on desktop.
+          - Smoother fuselages, detailed engines and gear, glass terminals, upgraded tower, hangars, fuel farm, a procedural city skyline and tree belts around every major airport.
           EOF
           gh release create "$GAME_VERSION" builds/windows/StormfighterFlightSim.exe \
             --title "Stormfighter Flight Sim ${GAME_VERSION}" \

@@ -2,10 +2,9 @@
 
 A realistic flight simulator built in **Godot 4.7** — 18 aircraft with real-world specs, a
 real-scale archipelago with 10 airports, automated ATC, a SkyCoins economy that rewards
-airmanship and punishes recklessness, damage & random failures, jobs, and player-hosted
-P2P multiplayer. Runs in the browser and as a native Windows app with identical physics.
+airmanship and punishes recklessness, damage & random failures, jobs, and multiplayer.
+**Windows desktop app** — one self-contained `.exe`, no install.
 
-**[▶ Play in your browser](https://hardcoregamingsyle.github.io/stormflight-sim/play/)** ·
 **[⬇ Download for Windows (.exe)](https://github.com/hardcoregamingsyle/stormflight-sim/releases/latest/download/StormfighterFlightSim.exe)** ·
 **[Landing page](https://hardcoregamingsyle.github.io/stormflight-sim/)**
 
@@ -60,28 +59,20 @@ P2P multiplayer. Runs in the browser and as a native Windows app with identical 
 | H | Engines | X | Autopilot |
 | R | ATC radio (1–9 to reply) | P | Jobs board |
 | M | Map | C | Camera · F1 Help · Esc Pause |
-| , / . | Pitch trim | B / N | Brakes / parking brake |
-| I | Engines | U | Pushback tug |
-| X | Autopilot | C | Camera views |
-| Tab | ATC menu (1–9 to reply) | J | Jobs board |
-| M | Map | F1 | Help |
+
+Every key drives exactly one axis — no key is shared between two controls.
+Helicopters map the same keys to collective (W/S), pedals (A/D) and cyclic (I/K, J/L).
 
 ## Building from source
 
 1. Install [Godot 4.7](https://godotengine.org/download) + export templates.
 2. Clone, then `godot --headless --import .`
 3. Run: `godot` (or `godot -- --smoketest` for the headless physics test).
-4. Export: `godot --headless --export-release "Windows Desktop"` / `"Web"`.
+4. Export: `godot --headless --export-release "Windows Desktop" StormfighterFlightSim.exe`.
 
+Windows is the only shipping target — one self-contained `.exe` with the game data embedded.
 Sounds are procedurally generated (`python tools/make_audio.py`); the aircraft database is
 generated from researched specs (`python tools/gen_aircraft_db.py data/aircraft_specs.json`).
-
-## Multiplayer notes
-
-- Hosting requires the desktop build (browsers can't listen on sockets). LAN works out of the
-  box; for internet play forward TCP 9080.
-- Browser clients can join only from http-served pages (browser mixed-content rules block
-  `ws://` from `https://`) — for guaranteed multiplayer use the desktop app.
 
 ## License
 
