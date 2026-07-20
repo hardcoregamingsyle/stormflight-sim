@@ -64,18 +64,29 @@ jobs:
         run: |
           mkdir -p builds/windows
           godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim-EOS.exe 2>&1 | tail -40
+          echo "Exported files (the plugin emits native DLLs beside the exe):"
           ls -la builds/windows
           test -s builds/windows/StormfighterFlightSim-EOS.exe
+          # A GDExtension can't live inside a single .exe - its native DLLs
+          # (EOS SDK + plugin) must sit next to it, so ship the whole folder
+          # as one zip. Confirm the two critical libs are present.
+          test -f builds/windows/EOSSDK-Win64-Shipping.dll || (echo "::error::EOS SDK dll missing from export" && exit 1)
+          ls builds/windows/libeosg*.dll >/dev/null 2>&1 || (echo "::error::plugin dll missing from export" && exit 1)
+          cd builds/windows
+          zip -q -j StormfighterFlightSim-EOS.zip *.exe *.dll
+          unzip -l StormfighterFlightSim-EOS.zip
 
       - name: Publish EOS preview release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          **EOS multiplayer preview** (Windows) — the same game as the latest stable release, with Epic Online Services bundled so **MULTIPLAYER → QUICK JOIN** can reach a shared public server (no plugin install, no account, no IP).
+          **EOS multiplayer preview** (Windows) — the same game as the stable release, with Epic Online Services bundled so **MULTIPLAYER → QUICK JOIN** reaches a shared public server (no plugin install, no account, no IP).
 
-          Auto-assembled by CI and **not run-tested** (no way to launch a real multiplayer session in CI). Download, launch, hit Quick Join, and watch the status line — if it doesn't connect it names the exact step to fix. The stable v1.3.0 download is unaffected by this build.
+          ### Download `StormfighterFlightSim-EOS.zip`, unzip it, and run the .exe **from the unzipped folder** — keep the `.dll` files next to it. (A native plugin can't be a single self-contained .exe; the DLLs must stay beside the game.)
+
+          Auto-assembled by CI and **not run-tested** (CI can't launch a real multiplayer session). Hit Quick Join and watch the status line — if it doesn't connect it names the exact step to fix. The stable v1.3.0 single-exe download is unaffected.
           EOF
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
-          gh release create "$RELEASE_TAG" builds/windows/StormfighterFlightSim-EOS.exe \
+          gh release create "$RELEASE_TAG" builds/windows/StormfighterFlightSim-EOS.zip \
             --title "EOS multiplayer preview" --notes-file notes.md --prerelease
