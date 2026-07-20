@@ -12,46 +12,78 @@ extends Node
 const PORT := 9080
 const SEND_HZ := 12.0
 
-var peer: WebSocketMultiplayerPeer = null
+var peer: MultiplayerPeer = null
 var players: Dictionary = {}       # peer_id -> {name, aircraft_id}
 var proxies: Dictionary = {}       # peer_id -> {craft, from, to, t0, t1}
 var _send_accum := 0.0
 var _time_sync_accum := 0.0
 var _world: WorldRoot = null
+var _eos: EOSBackend = null
 
 func is_active() -> bool:
-	return peer != null
+	return multiplayer.multiplayer_peer != null and not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer) \
+		and (peer != null or _eos != null)
+
+# ------------------------------------------------------------------ matchmaking
+## "" when Quick Join can run; otherwise a reason to show the player.
+func matchmaking_status() -> String:
+	return EOSBackend.available()
+
+## Public matchmaking: join a shared server (or create one if none exists).
+## No IP, no hosting-for-friends. Delegates to the EOS backend, which drives
+## Game.start_flight once the lobby peer is live.
+func quick_join() -> void:
+	if _eos == null:
+		_eos = EOSBackend.new()
+		_eos.name = "EOSBackend"
+		add_child(_eos)
+		_eos.status.connect(func(t: String): EventBus.net_status.emit(t))
+		_eos.failed.connect(func(_r: String): pass)
+		_eos.ready_to_fly.connect(_on_eos_ready)
+	_eos.quick_join()
+
+func _on_eos_ready(is_host: bool) -> void:
+	_wire_signals(true)
+	if is_host:
+		Game.mode = Game.Mode.HOST
+		players[1] = {"name": Game.player_name(), "aircraft_id": Game.selected_aircraft_id}
+	else:
+		Game.mode = Game.Mode.CLIENT
+	var m := Game.Mode.HOST if is_host else Game.Mode.CLIENT
+	Game.start_flight(Game.selected_aircraft_id, Game.selected_airport_id, m)
+
+## Connect the high-level multiplayer signals once. Shared by host/join/EOS.
+func _wire_signals(client_side: bool) -> void:
+	_connect_once(multiplayer.peer_connected, _on_peer_connected)
+	_connect_once(multiplayer.peer_disconnected, _on_peer_disconnected)
+	if client_side:
+		_connect_once(multiplayer.connected_to_server, _on_connected)
+		_connect_once(multiplayer.connection_failed, _on_conn_failed)
+		_connect_once(multiplayer.server_disconnected, _on_server_gone)
 
 ## Start hosting. Desktop only (browsers cannot listen). Returns error text or "".
 func host() -> String:
-	if OS.has_feature("web"):
-		return "Web builds cannot host - use the desktop app to host"
-	peer = WebSocketMultiplayerPeer.new()
-	var err := peer.create_server(PORT)
+	var ws := WebSocketMultiplayerPeer.new()
+	var err := ws.create_server(PORT)
 	if err != OK:
-		peer = null
 		return "Could not open port %d (error %d)" % [PORT, err]
+	peer = ws
 	multiplayer.multiplayer_peer = peer
-	_connect_once(multiplayer.peer_connected, _on_peer_connected)
-	_connect_once(multiplayer.peer_disconnected, _on_peer_disconnected)
+	_wire_signals(false)
 	players[1] = {"name": Game.player_name(), "aircraft_id": Game.selected_aircraft_id}
 	EventBus.net_status.emit("Hosting on port %d" % PORT)
 	return ""
 
-## Join a host by address. Returns error text or "".
+## Join a host by address (LAN / direct IP). Returns error text or "".
 func join(address: String) -> String:
-	peer = WebSocketMultiplayerPeer.new()
+	var ws := WebSocketMultiplayerPeer.new()
 	var url := "ws://%s:%d" % [address.strip_edges(), PORT]
-	var err := peer.create_client(url)
+	var err := ws.create_client(url)
 	if err != OK:
-		peer = null
 		return "Could not connect to %s (error %d)" % [url, err]
+	peer = ws
 	multiplayer.multiplayer_peer = peer
-	_connect_once(multiplayer.connected_to_server, _on_connected)
-	_connect_once(multiplayer.connection_failed, _on_conn_failed)
-	_connect_once(multiplayer.server_disconnected, _on_server_gone)
-	_connect_once(multiplayer.peer_connected, _on_peer_connected)
-	_connect_once(multiplayer.peer_disconnected, _on_peer_disconnected)
+	_wire_signals(true)
 	EventBus.net_status.emit("Connecting to %s..." % address)
 	return ""
 
@@ -64,6 +96,8 @@ func leave() -> void:
 		_free_proxy(id)
 	proxies.clear()
 	players.clear()
+	if _eos != null:
+		_eos.cancel()
 	if peer:
 		peer.close()
 		peer = null

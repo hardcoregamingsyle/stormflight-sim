@@ -43,9 +43,10 @@ airmanship and punishes recklessness, damage & random failures, jobs, and multip
   avionics) accelerated by abuse; low health raises the odds of flameouts, jammed flaps,
   stuck gear (gravity-drop with hold-G), hydraulic degradation and avionics faults.
   Repair and refuel in the hangar.
-- **P2P multiplayer** — no dedicated server: a desktop player hosts (WebSocket, TCP 9080),
-  others join by IP. Shared deterministic world, interpolated remote aircraft with real
-  collisions, chat, periodic time sync.
+- **Multiplayer** — **Quick Join** drops you into a shared public server via Epic Online
+  Services matchmaking (anonymous sign-in + relayed P2P, no IP or port-forwarding); a
+  **LAN / direct-IP** mode needs no account. Shared deterministic world, interpolated remote
+  aircraft with real collisions, chat, time sync. EOS setup: [docs/MULTIPLAYER_EOS_SETUP.md](docs/MULTIPLAYER_EOS_SETUP.md).
 
 ## Controls
 

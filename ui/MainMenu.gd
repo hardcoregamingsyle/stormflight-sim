@@ -254,46 +254,51 @@ func show_multiplayer() -> void:
 	_mp_status = UIKit.label("", 15, UIKit.WARN)
 	content.add_child(_mp_status)
 
-	# Host section
-	var host_panel := UIKit.panel(UIKit.BG_LIGHT)
-	var hv := UIKit.vbox(8)
-	host_panel.add_child(hv)
-	hv.add_child(UIKit.label("HOST A SESSION", 18, UIKit.ACCENT))
-	if Quality.is_web:
-		hv.add_child(UIKit.label("Hosting requires the desktop app (browsers cannot open ports). You can still JOIN a desktop host below.", 14, UIKit.DIM))
-	else:
-		hv.add_child(UIKit.label("Friends on your network join your local IP. For internet play, forward TCP port 9080 and share your public IP.", 14, UIKit.DIM))
-		hv.add_child(UIKit.label("Your local IPs: %s" % ", ".join(Net.local_addresses()), 14, UIKit.TEXT))
-		hv.add_child(UIKit.btn("HOST & START FLYING", func():
+	# --- Quick Join: public matchmaking (join and you're in a server) ---
+	var quick_panel := UIKit.panel(UIKit.BG_LIGHT)
+	var qv := UIKit.vbox(8)
+	quick_panel.add_child(qv)
+	qv.add_child(UIKit.label("QUICK JOIN A PUBLIC SERVER", 18, UIKit.ACCENT))
+	qv.add_child(UIKit.label("No IP, no friends needed - drop into a shared server with whoever's online. Powered by Epic Online Services.", 14, UIKit.DIM))
+	var mm_gate := Net.matchmaking_status()
+	if mm_gate == "":
+		qv.add_child(UIKit.btn("QUICK JOIN", func():
 			pick.call()
-			var err := Net.host()
-			if err != "":
-				_mp_status.text = err
-			else:
-				Game.start_flight(Game.selected_aircraft_id, Game.selected_airport_id, Game.Mode.HOST), 18))
-	content.add_child(host_panel)
+			_mp_status.text = "Connecting to matchmaking..."
+			Net.quick_join(), 20))
+	else:
+		qv.add_child(UIKit.label("Not available yet: %s" % mm_gate, 14, UIKit.WARN))
+		qv.add_child(UIKit.label("See docs/MULTIPLAYER_EOS_SETUP.md to enable public servers.", 13, UIKit.DIM))
+	content.add_child(quick_panel)
 
-	# Join section
-	var join_panel := UIKit.panel(UIKit.BG_LIGHT)
-	var jv := UIKit.vbox(8)
-	join_panel.add_child(jv)
-	jv.add_child(UIKit.label("JOIN A SESSION", 18, UIKit.ACCENT))
+	# --- Advanced: LAN / direct IP (no account needed, same-network or port-forward) ---
+	var adv_panel := UIKit.panel(UIKit.BG_LIGHT)
+	var av := UIKit.vbox(8)
+	adv_panel.add_child(av)
+	av.add_child(UIKit.label("ADVANCED - LAN / DIRECT CONNECT", 18, UIKit.ACCENT))
+	av.add_child(UIKit.label("Same network: one player hosts, others join their local IP. Internet: forward TCP 9080.", 14, UIKit.DIM))
+	av.add_child(UIKit.label("Your local IPs: %s" % ", ".join(Net.local_addresses()), 14, UIKit.TEXT))
+	av.add_child(UIKit.btn("HOST ON THIS PC", func():
+		pick.call()
+		var err := Net.host()
+		if err != "":
+			_mp_status.text = err
+		else:
+			Game.start_flight(Game.selected_aircraft_id, Game.selected_airport_id, Game.Mode.HOST), 16))
 	var jrow := UIKit.hbox(10)
 	jrow.add_child(UIKit.label("Host IP:", 16))
 	var ip_edit := LineEdit.new()
 	ip_edit.placeholder_text = "192.168.1.42"
 	ip_edit.custom_minimum_size = Vector2(220, 0)
 	jrow.add_child(ip_edit)
-	jrow.add_child(UIKit.btn("JOIN", func():
+	jrow.add_child(UIKit.btn("JOIN IP", func():
 		pick.call()
 		Game.mode = Game.Mode.CLIENT
 		var err := Net.join(ip_edit.text)
 		if err != "":
 			_mp_status.text = err, 16))
-	jv.add_child(jrow)
-	if Quality.is_web:
-		jv.add_child(UIKit.label("Browser note: joining works when this page is served over http (e.g. a locally-run copy). On https pages the browser blocks ws:// connections - use the desktop app for guaranteed multiplayer.", 13, UIKit.DIM))
-	content.add_child(join_panel)
+	av.add_child(jrow)
+	content.add_child(adv_panel)
 
 func _on_net_status(text: String) -> void:
 	if _mp_status and is_instance_valid(_mp_status):
