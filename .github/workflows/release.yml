@@ -3,7 +3,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['.github/workflows/release.yml']
+    # Rebuild on any real code change. Ignore the paths the workflow itself
+    # writes back (the exported web build) so its own commit can't re-trigger
+    # an endless loop.
+    paths-ignore:
+      - 'docs/play/**'
 permissions:
   contents: write
 concurrency:
