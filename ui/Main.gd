@@ -219,6 +219,33 @@ func _smoketest() -> void:
 	# reads live input every frame)
 	var is_heli := p.cfg.is_helicopter()
 	var vr_kts := p.cfg.stall_speed_clean * Atmosphere.MS_TO_KTS * 1.18
+
+	# --- Ground-handling regression guard: full rudder at taxi speed must NOT
+	# flip or wildly over-bank the aircraft (the rudder-flip bug). ---
+	if not is_heli:
+		p.ctl_throttle = 0.4
+		Input.action_press("yaw_right", 1.0)
+		var max_ground_bank := 0.0
+		for _gs in 210:
+			await get_tree().physics_frame
+			max_ground_bank = maxf(max_ground_bank, absf(p.get_bank()))
+			if p.crashed or not p.gear.on_ground:
+				break
+		Input.action_release("yaw_right")
+		print("SMOKETEST ground-steer: max_bank=%.1f deg ias=%.1f kts crashed=%s" % [max_ground_bank, p.get_ias_kts(), str(p.crashed)])
+		if p.crashed or max_ground_bank > 35.0:
+			print("SMOKETEST FAIL: rudder flipped / over-banked the aircraft on the ground (bank=%.1f)" % max_ground_bank)
+			Game.return_to_menu()
+			await get_tree().create_timer(0.5).timeout
+			get_tree().quit(1)
+			return
+		# Re-line-up for the takeoff run
+		p.global_position = ((rw.e1 as Vector3) - w.origin_offset()) + dir3 * 80.0 + Vector3(0, p.gear.spawn_height() + 0.05, 0)
+		p.rotation = Vector3(0, -atan2(dir3.x, -dir3.z), 0)
+		p.linear_velocity = Vector3.ZERO
+		p.angular_velocity = Vector3.ZERO
+		p.ctl_throttle = 1.0
+
 	if not is_heli:
 		Input.action_press("pitch_up", 0.25)
 	var ap_engaged := false

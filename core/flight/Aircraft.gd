@@ -412,6 +412,17 @@ func _physics_process(dt: float) -> void:
 		EventBus.landed.emit(gear.touchdown_fpm, quality)
 		Sfx.play("touchdown", clampf(gear.touchdown_fpm / 800.0, 0.2, 1.0))
 
+	# Ground roll stability: sitting on the gear, keep the wings level and damp
+	# the roll rate so hard nosewheel steering or braking can't tip the aircraft
+	# over. ONLY the roll axis is touched - pitch (takeoff rotation) and yaw
+	# (nosewheel steering) stay entirely under the pilot's control.
+	if gear.on_ground and not cfg.is_helicopter():
+		var right := global_transform.basis.x
+		var bank := asin(clampf(-right.y, -1.0, 1.0))          # rad, + = right wing low
+		var roll_rate := (basis_inv * angular_velocity).z
+		var tq_roll := bank * mass * 12.0 - roll_rate * mass * 7.0
+		apply_torque(global_transform.basis * Vector3(0.0, 0.0, tq_roll))
+
 	# Pushback tug
 	if pushback_active:
 		if not gear.on_ground or get_ias() > 3.0:
@@ -459,7 +470,7 @@ func _physics_process(dt: float) -> void:
 	if not crashed:
 		if up_dot < 0.05 and (get_contact_count() > 0 or agl < 2.0):
 			crash("Flipped over")
-		elif up_dot < 0.5 and get_contact_count() > 0 and linear_velocity.length() > 8.0:
+		elif up_dot < 0.35 and get_contact_count() > 0 and linear_velocity.length() > 12.0:
 			crash("Wing strike - cartwheeled")
 
 	# --- Damage / stress ---

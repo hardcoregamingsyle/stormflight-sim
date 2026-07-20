@@ -164,8 +164,13 @@ func update(body: RigidBody3D, dt: float) -> void:
 		# Local ground-plane axes, with nose-wheel steering
 		var fwd: Vector3 = -xf.basis.z
 		if wh.is_nose:
-			var max_steer: float = deg_to_rad(lerpf(62.0, 7.0, clampf(v_contact.length() / 42.0, 0.0, 1.0)))
-			fwd = fwd.rotated(n.normalized(), -steer_input * max_steer)
+			# Rudder-pedal nosewheel steering: gentle so a tap can't pivot the
+			# aircraft violently (that hard yaw is what used to roll it over).
+			# Max deflection is modest and tightens further with speed; the
+			# squared response gives fine control near centre.
+			var max_steer: float = deg_to_rad(lerpf(18.0, 4.0, clampf(v_contact.length() / 20.0, 0.0, 1.0)))
+			var steer: float = steer_input * absf(steer_input)
+			fwd = fwd.rotated(n.normalized(), -steer * max_steer)
 		var long_dir: Vector3 = (fwd - n * fwd.dot(n)).normalized()
 		var lat_dir: Vector3 = long_dir.cross(n).normalized()
 
