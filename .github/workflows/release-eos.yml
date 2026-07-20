@@ -1,0 +1,81 @@
+name: release-eos
+# Builds a Windows .exe with the Epic Online Services plugin bundled, so
+# MULTIPLAYER -> QUICK JOIN can reach a public server without the player
+# installing anything. Isolated from the normal release: it publishes a
+# separate prerelease tag, so if the plugin download/export ever breaks it
+# never touches the stable v1.3.0 build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'core/net/**'
+      - '.github/workflows/release-eos.yml'
+permissions:
+  contents: write
+concurrency:
+  group: release-eos
+  cancel-in-progress: true
+env:
+  GODOT_VERSION: 4.7-stable
+  EOS_PLUGIN_TAG: "2.3.0"
+  RELEASE_TAG: eos-preview
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          TPLDIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION/-/.}"
+          mkdir -p "$TPLDIR"
+          unzip -q templates.tpz
+          mv templates/* "$TPLDIR"/
+
+      - name: Fetch and install the EOS plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p eos_dl _eos_extract
+          # Grab the plugin release assets (zips) from the public plugin repo.
+          gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --pattern '*.zip' --dir eos_dl \
+            || gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --dir eos_dl
+          echo "Downloaded:"; ls -la eos_dl
+          for z in eos_dl/*.zip; do [ -f "$z" ] && unzip -o -q "$z" -d _eos_extract || true; done
+          # Find the addon folder wherever it landed and copy it into the project.
+          SRC=$(find _eos_extract -type d -name 'epic-online-services-godot' | head -1)
+          echo "Addon folder: '$SRC'"
+          if [ -z "$SRC" ]; then echo "::error::EOS addon folder not found in release assets"; find _eos_extract -maxdepth 3 -type d; exit 1; fi
+          mkdir -p addons
+          cp -r "$SRC" addons/
+          echo "Installed addon contents:"; ls -la addons/epic-online-services-godot
+
+      - name: Import project (registers the GDExtension)
+        run: |
+          godot --headless --import 2>&1 | tail -30 || true
+
+      - name: Export Windows (EOS-enabled)
+        run: |
+          mkdir -p builds/windows
+          godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim-EOS.exe 2>&1 | tail -40
+          ls -la builds/windows
+          test -s builds/windows/StormfighterFlightSim-EOS.exe
+
+      - name: Publish EOS preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          **EOS multiplayer preview** (Windows) — the same game as the latest stable release, with Epic Online Services bundled so **MULTIPLAYER → QUICK JOIN** can reach a shared public server (no plugin install, no account, no IP).
+
+          Auto-assembled by CI and **not run-tested** (no way to launch a real multiplayer session in CI). Download, launch, hit Quick Join, and watch the status line — if it doesn't connect it names the exact step to fix. The stable v1.3.0 download is unaffected by this build.
+          EOF
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" builds/windows/StormfighterFlightSim-EOS.exe \
+            --title "EOS multiplayer preview" --notes-file notes.md --prerelease
