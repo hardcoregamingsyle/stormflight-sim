@@ -42,37 +42,37 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          mkdir -p eos_dl _eos_extract
-          gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --pattern '*.zip' --dir eos_dl \
-            || gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --dir eos_dl
-          echo "Downloaded:"; ls -la eos_dl
-          for z in eos_dl/*.zip; do [ -f "$z" ] && unzip -o -q "$z" -d _eos_extract || true; done
-          SRC=$(find _eos_extract -type d -name 'epic-online-services-godot' | head -1)
-          echo "Addon folder: '$SRC'"
-          if [ -z "$SRC" ]; then echo "::error::EOS addon folder not found"; find _eos_extract -maxdepth 3 -type d; exit 1; fi
+          # Extract OUTSIDE the project so Godot never scans a second copy of
+          # the .gdextension (that double-registered every EOS class and
+          # corrupted the singleton). Use only the all-platforms zip.
+          mkdir -p /tmp/eos_dl /tmp/eos_extract
+          gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --pattern '*-all-*.zip' --dir /tmp/eos_dl
+          ls -la /tmp/eos_dl
+          unzip -o -q /tmp/eos_dl/*-all-*.zip -d /tmp/eos_extract
+          # The addon root is the folder that directly contains eosg.gdextension.
+          GDEXT_SRC=$(find /tmp/eos_extract -name 'eosg.gdextension' | head -1)
+          if [ -z "$GDEXT_SRC" ]; then echo "::error::eosg.gdextension not found in release"; find /tmp/eos_extract -maxdepth 4 -type d; exit 1; fi
+          ADDON_SRC=$(dirname "$GDEXT_SRC")
+          echo "addon source: $ADDON_SRC"
+          rm -rf addons/epic-online-services-godot
           mkdir -p addons
-          cp -r "$SRC" addons/
-          echo "=== addon contents ==="; ls -la addons/epic-online-services-godot
-          echo "=== native libs shipped by the plugin ==="
-          find addons/epic-online-services-godot -name '*.so' -o -name '*.dll' -o -name '*.dylib' | sort
+          cp -r "$ADDON_SRC" addons/epic-online-services-godot
+          echo "=== installed addon (must be a single level) ==="
+          ls -la addons/epic-online-services-godot
+          test -f addons/epic-online-services-godot/eosg.gdextension
+          echo "=== native libs ==="
+          find addons/epic-online-services-godot/bin -name '*.so' -o -name '*.dll' | sort
 
-      - name: Register the GDExtension for export
+      - name: Register the GDExtension (exactly once)
         run: |
           set -e
-          GDEXT=$(find addons -name '*.gdextension' | head -1)
-          echo "gdextension file: $GDEXT"
-          if [ -z "$GDEXT" ]; then echo "::error::no .gdextension file in the plugin"; exit 1; fi
-          echo "=== .gdextension contents ==="; cat "$GDEXT"
           godot --headless --import 2>&1 | tail -8 || true
-          godot --headless --import 2>&1 | tail -8 || true
-          mkdir -p .godot
-          echo "=== extension_list.cfg after import ==="; cat .godot/extension_list.cfg 2>/dev/null || echo "(missing)"
-          # Guarantee the extension is registered for the export regardless of
-          # whether headless import wrote it.
-          GDEXT_RES="res://${GDEXT}"
-          touch .godot/extension_list.cfg
-          grep -qxF "$GDEXT_RES" .godot/extension_list.cfg || echo "$GDEXT_RES" >> .godot/extension_list.cfg
-          echo "=== extension_list.cfg final ==="; cat .godot/extension_list.cfg
+          echo "=== extension_list.cfg ==="; cat .godot/extension_list.cfg 2>/dev/null || echo "(missing)"
+          N=$(grep -c 'eosg.gdextension' .godot/extension_list.cfg 2>/dev/null || true)
+          N=${N:-0}
+          echo "eosg extension registrations: $N"
+          if [ "$N" -lt 1 ]; then echo "::error::import did not register the EOS extension"; exit 1; fi
+          if [ "$N" -gt 1 ]; then echo "::error::EOS extension registered $N times (duplicate)"; exit 1; fi
 
       - name: Verify the extension loads in a REAL exported build
         run: |
