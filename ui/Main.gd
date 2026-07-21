@@ -11,10 +11,22 @@ func _ready() -> void:
 	goto_menu()
 	if "--smoketest" in OS.get_cmdline_user_args():
 		_smoketest()
+	elif "--eoscheck" in OS.get_cmdline_user_args():
+		_eoscheck()
 	elif "--screenshots" in OS.get_cmdline_user_args():
 		_screenshots()
 	elif "--lightmatrix" in OS.get_cmdline_user_args():
 		_lightmatrix()
+
+## Reports whether the EOS GDExtension actually loaded in THIS build. Run on an
+## exported binary in CI to prove the plugin is really bundled (exit 0 = yes).
+func _eoscheck() -> void:
+	var has_peer := ClassDB.class_exists("EOSGMultiplayerPeer")
+	var has_singleton := Engine.has_singleton("IEOS")
+	var present := EOSBackend.plugin_present()
+	print("EOSCHECK: plugin_present=%s IEOS=%s EOSGMultiplayerPeer=%s configured=%s" % [
+		str(present), str(has_singleton), str(has_peer), str(EOSConfig.configured())])
+	get_tree().quit(0 if present else 3)
 
 func _snap(path: String) -> void:
 	await RenderingServer.frame_post_draw

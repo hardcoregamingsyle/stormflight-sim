@@ -1,9 +1,9 @@
 name: release-eos
 # Builds a Windows .exe with the Epic Online Services plugin bundled, so
-# MULTIPLAYER -> QUICK JOIN can reach a public server without the player
-# installing anything. Isolated from the normal release: it publishes a
-# separate prerelease tag, so if the plugin download/export ever breaks it
-# never touches the stable v1.3.0 build.
+# MULTIPLAYER -> QUICK JOIN can reach a public server. Before publishing it
+# EXPORTS A REAL BUILD AND RUNS IT to prove the EOS extension actually loads -
+# so a build where the plugin didn't get bundled can never ship. Isolated from
+# the stable release (separate prerelease tag).
 on:
   workflow_dispatch:
   push:
@@ -43,35 +43,77 @@ jobs:
         run: |
           set -e
           mkdir -p eos_dl _eos_extract
-          # Grab the plugin release assets (zips) from the public plugin repo.
           gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --pattern '*.zip' --dir eos_dl \
             || gh release download "$EOS_PLUGIN_TAG" --repo 3ddelano/epic-online-services-godot --dir eos_dl
           echo "Downloaded:"; ls -la eos_dl
           for z in eos_dl/*.zip; do [ -f "$z" ] && unzip -o -q "$z" -d _eos_extract || true; done
-          # Find the addon folder wherever it landed and copy it into the project.
           SRC=$(find _eos_extract -type d -name 'epic-online-services-godot' | head -1)
           echo "Addon folder: '$SRC'"
-          if [ -z "$SRC" ]; then echo "::error::EOS addon folder not found in release assets"; find _eos_extract -maxdepth 3 -type d; exit 1; fi
+          if [ -z "$SRC" ]; then echo "::error::EOS addon folder not found"; find _eos_extract -maxdepth 3 -type d; exit 1; fi
           mkdir -p addons
           cp -r "$SRC" addons/
-          echo "Installed addon contents:"; ls -la addons/epic-online-services-godot
+          echo "=== addon contents ==="; ls -la addons/epic-online-services-godot
+          echo "=== native libs shipped by the plugin ==="
+          find addons/epic-online-services-godot -name '*.so' -o -name '*.dll' -o -name '*.dylib' | sort
 
-      - name: Import project (registers the GDExtension)
+      - name: Register the GDExtension for export
         run: |
-          godot --headless --import 2>&1 | tail -30 || true
+          set -e
+          GDEXT=$(find addons -name '*.gdextension' | head -1)
+          echo "gdextension file: $GDEXT"
+          if [ -z "$GDEXT" ]; then echo "::error::no .gdextension file in the plugin"; exit 1; fi
+          echo "=== .gdextension contents ==="; cat "$GDEXT"
+          godot --headless --import 2>&1 | tail -8 || true
+          godot --headless --import 2>&1 | tail -8 || true
+          mkdir -p .godot
+          echo "=== extension_list.cfg after import ==="; cat .godot/extension_list.cfg 2>/dev/null || echo "(missing)"
+          # Guarantee the extension is registered for the export regardless of
+          # whether headless import wrote it.
+          GDEXT_RES="res://${GDEXT}"
+          touch .godot/extension_list.cfg
+          grep -qxF "$GDEXT_RES" .godot/extension_list.cfg || echo "$GDEXT_RES" >> .godot/extension_list.cfg
+          echo "=== extension_list.cfg final ==="; cat .godot/extension_list.cfg
+
+      - name: Verify the extension loads in a REAL exported build
+        run: |
+          set -e
+          # Temporary Linux preset so we can export the game AND run it headless.
+          {
+            echo ''
+            echo '[preset.1]'
+            echo 'name="LinuxCheck"'
+            echo 'platform="Linux"'
+            echo 'runnable=true'
+            echo 'dedicated_server=false'
+            echo 'export_filter="all_resources"'
+            echo 'exclude_filter="docs/*, builds/*, tools/*, data/aircraft_specs.json"'
+            echo 'export_path="builds/linux/game.x86_64"'
+            echo ''
+            echo '[preset.1.options]'
+            echo 'binary_format/embed_pck=true'
+            echo 'binary_format/architecture="x86_64"'
+          } >> export_presets.cfg
+          godot --headless --import 2>&1 | tail -5 || true
+          mkdir -p builds/linux
+          godot --headless --export-release "LinuxCheck" builds/linux/game.x86_64 2>&1 | tail -25
+          echo "=== files beside the Linux exe ==="; ls -la builds/linux
+          chmod +x builds/linux/game.x86_64
+          echo "=== EOSCHECK on the exported build ==="
+          ./builds/linux/game.x86_64 --headless -- --eoscheck 2>&1 | tee eoscheck.log || true
+          if ! grep -q "plugin_present=true" eoscheck.log; then
+            echo "::error::EOS extension did NOT load in the exported build - not publishing"
+            exit 1
+          fi
+          echo "EOS extension confirmed present in the exported build."
 
       - name: Export Windows (EOS-enabled)
         run: |
           mkdir -p builds/windows
-          godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim-EOS.exe 2>&1 | tail -40
-          echo "Exported files (the plugin emits native DLLs beside the exe):"
-          ls -la builds/windows
+          godot --headless --export-release "Windows Desktop" builds/windows/StormfighterFlightSim-EOS.exe 2>&1 | tail -25
+          echo "Exported files:"; ls -la builds/windows
           test -s builds/windows/StormfighterFlightSim-EOS.exe
-          # A GDExtension can't live inside a single .exe - its native DLLs
-          # (EOS SDK + plugin) must sit next to it, so ship the whole folder
-          # as one zip. Confirm the two critical libs are present.
-          test -f builds/windows/EOSSDK-Win64-Shipping.dll || (echo "::error::EOS SDK dll missing from export" && exit 1)
-          ls builds/windows/libeosg*.dll >/dev/null 2>&1 || (echo "::error::plugin dll missing from export" && exit 1)
+          test -f builds/windows/EOSSDK-Win64-Shipping.dll || (echo "::error::EOS SDK dll missing" && exit 1)
+          ls builds/windows/libeosg*.dll >/dev/null 2>&1 || (echo "::error::plugin dll missing" && exit 1)
           cd builds/windows
           zip -q -j StormfighterFlightSim-EOS.zip *.exe *.dll
           unzip -l StormfighterFlightSim-EOS.zip
@@ -85,7 +127,7 @@ jobs:
 
           ### Download `StormfighterFlightSim-EOS.zip`, unzip it, and run the .exe **from the unzipped folder** — keep the `.dll` files next to it. (A native plugin can't be a single self-contained .exe; the DLLs must stay beside the game.)
 
-          Auto-assembled by CI and **not run-tested** (CI can't launch a real multiplayer session). Hit Quick Join and watch the status line — if it doesn't connect it names the exact step to fix. The stable v1.3.0 single-exe download is unaffected.
+          This build's EOS plugin is verified present by launching an exported build in CI. Hit Quick Join and watch the status line — if it doesn't connect it names the exact step to fix. The stable v1.3.0 single-exe download is unaffected.
           EOF
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
           gh release create "$RELEASE_TAG" builds/windows/StormfighterFlightSim-EOS.zip \
